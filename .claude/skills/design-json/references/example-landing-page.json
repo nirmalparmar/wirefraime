@@ -1,0 +1,1136 @@
+{
+    "version": "1.0",
+    "name": "SaaS Landing Page",
+    "canvas": {
+        "width": 1440,
+        "height": 900,
+        "background": "#F9FAFB",
+        "grid": {
+            "enabled": true,
+            "size": 8,
+            "color": "#E5E7EB"
+        }
+    },
+    "tokens": {
+        "colors": {
+            "primary": "#6C63FF",
+            "primaryLight": "#EEF2FF",
+            "secondary": "#FF6584",
+            "background": "#F9FAFB",
+            "surface": "#FFFFFF",
+            "text": "#111827",
+            "textMuted": "#6B7280",
+            "border": "#E5E7EB",
+            "success": "#10B981",
+            "error": "#EF4444"
+        },
+        "typography": {
+            "fontPrimary": "Inter",
+            "sizeSm": 14,
+            "sizeMd": 16,
+            "sizeLg": 20,
+            "sizeXl": 24,
+            "size2xl": 32,
+            "size3xl": 48,
+            "size4xl": 64
+        },
+        "spacing": {
+            "xs": 4,
+            "sm": 8,
+            "md": 16,
+            "lg": 24,
+            "xl": 32,
+            "2xl": 48,
+            "3xl": 64,
+            "4xl": 96
+        },
+        "radii": {
+            "sm": 4,
+            "md": 8,
+            "lg": 12,
+            "xl": 16,
+            "full": 9999
+        }
+    },
+    "rootIds": [
+        "node_001"
+    ],
+    "nodes": [
+        {
+            "id": "node_001",
+            "name": "Page",
+            "type": "frame",
+            "parentId": null,
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "x": 0,
+                "y": 0,
+                "width": 1440,
+                "height": 900,
+                "widthMode": "fixed",
+                "heightMode": "hug",
+                "direction": "column",
+                "align": "stretch",
+                "justify": "start",
+                "gap": 0,
+                "padding": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#F9FAFB"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1,
+                "overflow": "hidden"
+            },
+            "children": [
+                "node_002",
+                "node_010",
+                "node_020"
+            ]
+        },
+        {
+            "id": "node_002",
+            "name": "Navbar",
+            "type": "frame",
+            "parentId": "node_001",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "x": 0,
+                "y": 0,
+                "width": 1440,
+                "height": 72,
+                "widthMode": "fill",
+                "heightMode": "fixed",
+                "direction": "row",
+                "align": "center",
+                "justify": "space-between",
+                "gap": 0,
+                "padding": {
+                    "top": 0,
+                    "right": 80,
+                    "bottom": 0,
+                    "left": 80
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#FFFFFF"
+                },
+                "border": {
+                    "width": 1,
+                    "color": "#E5E7EB",
+                    "style": "solid",
+                    "radius": 0
+                },
+                "shadow": {
+                    "x": 0,
+                    "y": 1,
+                    "blur": 4,
+                    "spread": 0,
+                    "color": "#0000000A"
+                },
+                "opacity": 1
+            },
+            "children": [
+                "node_003",
+                "node_004",
+                "node_005"
+            ]
+        },
+        {
+            "id": "node_003",
+            "name": "Logo",
+            "type": "text",
+            "parentId": "node_002",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "width": "auto",
+                "height": "auto",
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "⚡ Launchpad",
+            "textStyle": {
+                "color": "#111827",
+                "fontFamily": "Inter",
+                "fontSize": 20,
+                "fontWeight": 700,
+                "lineHeight": 1,
+                "letterSpacing": -0.5,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_004",
+            "name": "Nav Links",
+            "type": "frame",
+            "parentId": "node_002",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "row",
+                "align": "center",
+                "justify": "center",
+                "gap": 32,
+                "padding": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "children": [
+                "node_004a",
+                "node_004b",
+                "node_004c"
+            ]
+        },
+        {
+            "id": "node_004a",
+            "name": "Nav - Features",
+            "type": "text",
+            "parentId": "node_004",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Features",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 15,
+                "fontWeight": 500,
+                "lineHeight": 1,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_004b",
+            "name": "Nav - Pricing",
+            "type": "text",
+            "parentId": "node_004",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Pricing",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 15,
+                "fontWeight": 500,
+                "lineHeight": 1,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_004c",
+            "name": "Nav - Docs",
+            "type": "text",
+            "parentId": "node_004",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Docs",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 15,
+                "fontWeight": 500,
+                "lineHeight": 1,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_005",
+            "name": "CTA Button",
+            "type": "button",
+            "parentId": "node_002",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "padding": {
+                    "top": 10,
+                    "right": 20,
+                    "bottom": 10,
+                    "left": 20
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#6C63FF"
+                },
+                "border": {
+                    "width": 0,
+                    "color": "transparent",
+                    "style": "solid",
+                    "radius": 8
+                },
+                "shadow": {
+                    "x": 0,
+                    "y": 2,
+                    "blur": 8,
+                    "spread": 0,
+                    "color": "#6C63FF33"
+                },
+                "opacity": 1
+            },
+            "label": "Get Started Free",
+            "variant": "primary",
+            "interaction": {
+                "onClick": "navigate",
+                "target": "/signup"
+            },
+            "children": []
+        },
+        {
+            "id": "node_010",
+            "name": "Hero Section",
+            "type": "frame",
+            "parentId": "node_001",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "x": 0,
+                "y": 72,
+                "width": 1440,
+                "height": 620,
+                "widthMode": "fill",
+                "heightMode": "fixed",
+                "direction": "column",
+                "align": "center",
+                "justify": "center",
+                "gap": 24,
+                "padding": {
+                    "top": 96,
+                    "right": 240,
+                    "bottom": 96,
+                    "left": 240
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "gradient",
+                    "angle": 160,
+                    "stops": [
+                        {
+                            "color": "#EEF2FF",
+                            "position": 0
+                        },
+                        {
+                            "color": "#F9FAFB",
+                            "position": 1
+                        }
+                    ]
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "children": [
+                "node_011",
+                "node_012",
+                "node_013"
+            ]
+        },
+        {
+            "id": "node_011",
+            "name": "Hero Headline",
+            "type": "text",
+            "parentId": "node_010",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Ship beautiful products\n10x faster with AI",
+            "textStyle": {
+                "color": "#111827",
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 800,
+                "lineHeight": 1.1,
+                "letterSpacing": -2,
+                "textAlign": "center"
+            },
+            "children": []
+        },
+        {
+            "id": "node_012",
+            "name": "Hero Subheading",
+            "type": "text",
+            "parentId": "node_010",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Launchpad turns your ideas into polished, production-ready designs in seconds. Powered by LLMs, edited by you.",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 20,
+                "fontWeight": 400,
+                "lineHeight": 1.6,
+                "letterSpacing": 0,
+                "textAlign": "center"
+            },
+            "children": []
+        },
+        {
+            "id": "node_013",
+            "name": "Hero CTA Group",
+            "type": "frame",
+            "parentId": "node_010",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "row",
+                "align": "center",
+                "justify": "center",
+                "gap": 16,
+                "padding": {
+                    "top": 16,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "children": [
+                "node_013a",
+                "node_013b"
+            ]
+        },
+        {
+            "id": "node_013a",
+            "name": "Primary CTA",
+            "type": "button",
+            "parentId": "node_013",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "padding": {
+                    "top": 16,
+                    "right": 32,
+                    "bottom": 16,
+                    "left": 32
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#6C63FF"
+                },
+                "border": {
+                    "width": 0,
+                    "color": "transparent",
+                    "style": "solid",
+                    "radius": 10
+                },
+                "shadow": {
+                    "x": 0,
+                    "y": 4,
+                    "blur": 20,
+                    "spread": 0,
+                    "color": "#6C63FF44"
+                },
+                "opacity": 1
+            },
+            "label": "Start for free →",
+            "variant": "primary",
+            "interaction": {
+                "onClick": "navigate",
+                "target": "/signup"
+            },
+            "children": []
+        },
+        {
+            "id": "node_013b",
+            "name": "Secondary CTA",
+            "type": "button",
+            "parentId": "node_013",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "padding": {
+                    "top": 16,
+                    "right": 32,
+                    "bottom": 16,
+                    "left": 32
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#FFFFFF"
+                },
+                "border": {
+                    "width": 1.5,
+                    "color": "#E5E7EB",
+                    "style": "solid",
+                    "radius": 10
+                },
+                "shadow": null,
+                "opacity": 1
+            },
+            "label": "Watch demo",
+            "variant": "secondary",
+            "interaction": {
+                "onClick": "modal",
+                "target": "demo-video"
+            },
+            "children": []
+        },
+        {
+            "id": "node_020",
+            "name": "Features Section",
+            "type": "frame",
+            "parentId": "node_001",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "column",
+                "align": "center",
+                "justify": "start",
+                "gap": 48,
+                "padding": {
+                    "top": 96,
+                    "right": 80,
+                    "bottom": 96,
+                    "left": 80
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#FFFFFF"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "children": [
+                "node_021",
+                "node_022"
+            ]
+        },
+        {
+            "id": "node_021",
+            "name": "Features Heading",
+            "type": "text",
+            "parentId": "node_020",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Everything you need to ship faster",
+            "textStyle": {
+                "color": "#111827",
+                "fontFamily": "Inter",
+                "fontSize": 36,
+                "fontWeight": 700,
+                "lineHeight": 1.2,
+                "letterSpacing": -1,
+                "textAlign": "center"
+            },
+            "children": []
+        },
+        {
+            "id": "node_022",
+            "name": "Feature Cards Row",
+            "type": "frame",
+            "parentId": "node_020",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "row",
+                "align": "stretch",
+                "justify": "center",
+                "gap": 24,
+                "padding": {
+                    "top": 0,
+                    "right": 0,
+                    "bottom": 0,
+                    "left": 0
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "children": [
+                "node_023",
+                "node_024",
+                "node_025"
+            ]
+        },
+        {
+            "id": "node_023",
+            "name": "Feature Card - AI Generation",
+            "type": "card",
+            "parentId": "node_022",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "column",
+                "align": "start",
+                "justify": "start",
+                "gap": 12,
+                "padding": {
+                    "top": 32,
+                    "right": 28,
+                    "bottom": 32,
+                    "left": 28
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#FFFFFF"
+                },
+                "border": {
+                    "width": 1,
+                    "color": "#E5E7EB",
+                    "style": "solid",
+                    "radius": 16
+                },
+                "shadow": {
+                    "x": 0,
+                    "y": 4,
+                    "blur": 16,
+                    "spread": 0,
+                    "color": "#0000000D"
+                },
+                "opacity": 1
+            },
+            "children": [
+                "node_023a",
+                "node_023b",
+                "node_023c"
+            ]
+        },
+        {
+            "id": "node_023a",
+            "name": "Card Icon",
+            "type": "icon",
+            "parentId": "node_023",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "iconName": "Zap",
+            "iconSet": "lucide",
+            "size": 32,
+            "color": "#6C63FF",
+            "children": []
+        },
+        {
+            "id": "node_023b",
+            "name": "Card Title",
+            "type": "text",
+            "parentId": "node_023",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "AI-Powered Generation",
+            "textStyle": {
+                "color": "#111827",
+                "fontFamily": "Inter",
+                "fontSize": 18,
+                "fontWeight": 600,
+                "lineHeight": 1.3,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_023c",
+            "name": "Card Description",
+            "type": "text",
+            "parentId": "node_023",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Describe your design in plain English and watch it come to life instantly.",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 15,
+                "fontWeight": 400,
+                "lineHeight": 1.6,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_024",
+            "name": "Feature Card - Editable",
+            "type": "card",
+            "parentId": "node_022",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "column",
+                "align": "start",
+                "justify": "start",
+                "gap": 12,
+                "padding": {
+                    "top": 32,
+                    "right": 28,
+                    "bottom": 32,
+                    "left": 28
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#FFFFFF"
+                },
+                "border": {
+                    "width": 1,
+                    "color": "#E5E7EB",
+                    "style": "solid",
+                    "radius": 16
+                },
+                "shadow": {
+                    "x": 0,
+                    "y": 4,
+                    "blur": 16,
+                    "spread": 0,
+                    "color": "#0000000D"
+                },
+                "opacity": 1
+            },
+            "children": [
+                "node_024a",
+                "node_024b",
+                "node_024c"
+            ]
+        },
+        {
+            "id": "node_024a",
+            "name": "Card Icon",
+            "type": "icon",
+            "parentId": "node_024",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "iconName": "Pencil",
+            "iconSet": "lucide",
+            "size": 32,
+            "color": "#10B981",
+            "children": []
+        },
+        {
+            "id": "node_024b",
+            "name": "Card Title",
+            "type": "text",
+            "parentId": "node_024",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Fully Editable",
+            "textStyle": {
+                "color": "#111827",
+                "fontFamily": "Inter",
+                "fontSize": 18,
+                "fontWeight": 600,
+                "lineHeight": 1.3,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_024c",
+            "name": "Card Description",
+            "type": "text",
+            "parentId": "node_024",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Click any element to edit it. Drag to move. Resize with handles. It's all yours.",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 15,
+                "fontWeight": 400,
+                "lineHeight": 1.6,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_025",
+            "name": "Feature Card - Export",
+            "type": "card",
+            "parentId": "node_022",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "column",
+                "align": "start",
+                "justify": "start",
+                "gap": 12,
+                "padding": {
+                    "top": 32,
+                    "right": 28,
+                    "bottom": 32,
+                    "left": 28
+                },
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "solid",
+                    "color": "#FFFFFF"
+                },
+                "border": {
+                    "width": 1,
+                    "color": "#E5E7EB",
+                    "style": "solid",
+                    "radius": 16
+                },
+                "shadow": {
+                    "x": 0,
+                    "y": 4,
+                    "blur": 16,
+                    "spread": 0,
+                    "color": "#0000000D"
+                },
+                "opacity": 1
+            },
+            "children": [
+                "node_025a",
+                "node_025b",
+                "node_025c"
+            ]
+        },
+        {
+            "id": "node_025a",
+            "name": "Card Icon",
+            "type": "icon",
+            "parentId": "node_025",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "hug",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "iconName": "Download",
+            "iconSet": "lucide",
+            "size": 32,
+            "color": "#FF6584",
+            "children": []
+        },
+        {
+            "id": "node_025b",
+            "name": "Card Title",
+            "type": "text",
+            "parentId": "node_025",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Export Anywhere",
+            "textStyle": {
+                "color": "#111827",
+                "fontFamily": "Inter",
+                "fontSize": 18,
+                "fontWeight": 600,
+                "lineHeight": 1.3,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        },
+        {
+            "id": "node_025c",
+            "name": "Card Description",
+            "type": "text",
+            "parentId": "node_025",
+            "visible": true,
+            "locked": false,
+            "layout": {
+                "widthMode": "fill",
+                "heightMode": "hug",
+                "direction": "none",
+                "position": "auto"
+            },
+            "style": {
+                "background": {
+                    "type": "none"
+                },
+                "border": null,
+                "shadow": null,
+                "opacity": 1
+            },
+            "content": "Export as React code, Tailwind, CSS, or raw JSON. Integrate anywhere.",
+            "textStyle": {
+                "color": "#6B7280",
+                "fontFamily": "Inter",
+                "fontSize": 15,
+                "fontWeight": 400,
+                "lineHeight": 1.6,
+                "letterSpacing": 0,
+                "textAlign": "left"
+            },
+            "children": []
+        }
+    ]
+}
