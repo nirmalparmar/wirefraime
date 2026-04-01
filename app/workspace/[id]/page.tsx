@@ -37,7 +37,7 @@ async function runGenerate(
     },
   });
 
-  dispatch({ type: "SET_GENERATING", isGenerating: true, genStep: "Connecting..." });
+  dispatch({ type: "SET_GENERATING", isGenerating: true, genStep: "Analyzing your app..." });
 
   // Track step IDs for updates
   let currentStepId: string | null = null;
@@ -61,8 +61,10 @@ async function runGenerate(
     return currentStepId;
   }
 
+  let screenCount = 0;
+
   try {
-    addStep("Connecting to AI");
+    addStep("Analyzing your app", `Planning design for "${app.name}"`);
 
     const res = await fetch("/api/generate", {
       method: "POST",
@@ -76,7 +78,6 @@ async function runGenerate(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let screenCount = 0;
     let totalScreens = 0;
 
     while (true) {
@@ -192,12 +193,8 @@ async function runGenerate(
     if (signal?.aborted) return;
     console.error("Generate error:", err);
     const errMsg = err instanceof Error ? err.message : "Generation failed";
-    dispatch({
-      type: "SET_GEN_STEP",
-      genStep: `Error: ${errMsg}. Click Regenerate to try again.`,
-    });
 
-    // Mark running step as error
+    // Mark current step as error
     if (currentStepId) {
       dispatch({
         type: "UPDATE_AGENT_STEP",
@@ -207,6 +204,100 @@ async function runGenerate(
       });
     }
 
+    // Retry once if no screens were generated yet
+    if (screenCount === 0 && !signal?.aborted) {
+      dispatch({ type: "SET_GEN_STEP", genStep: "Retrying..." });
+      addStep("Retrying after error", errMsg);
+
+      try {
+        await new Promise((r) => setTimeout(r, 2000));
+        if (signal?.aborted) return;
+
+        const retryRes = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: app.name, description: app.description, projectId: app.id }),
+          signal,
+        });
+
+        if (!retryRes.ok || !retryRes.body) throw new Error("Retry failed");
+
+        const retryReader = retryRes.body.getReader();
+        const retryDecoder = new TextDecoder();
+        let retryBuffer = "";
+
+        while (true) {
+          if (signal?.aborted) break;
+          const { done, value } = await retryReader.read();
+          if (done) break;
+
+          retryBuffer += retryDecoder.decode(value, { stream: true });
+          const parts = retryBuffer.split("\n\n");
+          retryBuffer = parts.pop() ?? "";
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith("data: ")) continue;
+            let data: Record<string, unknown>;
+            try { data = JSON.parse(line.slice(6)); } catch { continue; }
+            const event = data.event as string;
+
+            if (event === "step") {
+              const label = data.label as string;
+              const detail = (data.detail as string) || undefined;
+              dispatch({ type: "SET_GEN_STEP", genStep: label });
+              addStep(label, detail);
+            } else if (event === "design_system") {
+              dispatch({
+                type: "SET_DESIGN_SYSTEM",
+                designSystem: data.designSystem as DesignSystem,
+                platform: (data.platform as Platform) ?? "web",
+              });
+            } else if (event === "screen_start") {
+              screenCount++;
+              dispatch({
+                type: "ADD_SCREEN",
+                screen: { id: data.id as string, name: data.name as string, html: "", isStreaming: true },
+              });
+              streamChunksRef.current.set(data.id as string, []);
+              addStep(`Generating "${data.name as string}"`);
+            } else if (event === "html_chunk") {
+              const chunks = streamChunksRef.current.get(data.screenId as string);
+              if (chunks) { chunks.push(data.chunk as string); forceUpdate(); }
+            } else if (event === "screen_done") {
+              dispatch({ type: "UPDATE_SCREEN_HTML", screenId: data.screenId as string, html: data.html as string });
+              dispatch({ type: "SET_SCREEN_STREAMING", screenId: data.screenId as string, isStreaming: false });
+              streamChunksRef.current.delete(data.screenId as string);
+              if (currentStepId) {
+                dispatch({ type: "UPDATE_AGENT_STEP", messageId: agentMsgId, stepId: currentStepId, updates: { status: "done" } });
+                currentStepId = null;
+              }
+            } else if (event === "error") {
+              throw new Error((data.message as string) || "Generation failed");
+            }
+          }
+        }
+
+        if (currentStepId) {
+          dispatch({ type: "UPDATE_AGENT_STEP", messageId: agentMsgId, stepId: currentStepId, updates: { status: "done" } });
+        }
+        dispatch({
+          type: "UPDATE_MESSAGE",
+          id: agentMsgId,
+          content: `Generated ${screenCount} screen${screenCount !== 1 ? "s" : ""} with a complete design system.`,
+        });
+        return; // Retry succeeded
+      } catch (retryErr) {
+        if (signal?.aborted) return;
+        console.error("Retry also failed:", retryErr);
+        // Fall through to show final error
+      }
+    }
+
+    dispatch({
+      type: "SET_GEN_STEP",
+      genStep: `Error: ${errMsg}. Click Regenerate to try again.`,
+    });
     dispatch({
       type: "UPDATE_MESSAGE",
       id: agentMsgId,

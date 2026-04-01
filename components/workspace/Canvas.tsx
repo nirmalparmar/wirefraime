@@ -341,9 +341,9 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
       };
     });
 
-    // Only show skeleton when generating but no screen is currently streaming
+    // Show skeleton for next screen when generating and at least one screen exists already
     const anyStreaming = app.screens.some((s) => s.isStreaming);
-    if (isGenerating && !anyStreaming) {
+    if (isGenerating && !anyStreaming && app.screens.length > 0) {
       const i = app.screens.length;
       const row = Math.floor(i / GRID_COLS);
       const col = i % GRID_COLS;
@@ -413,6 +413,34 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
         <Background variant={BackgroundVariant.Dots} color={"var(--canvas-dot)"} gap={50} size={2} />
         <Controls showInteractive={false} style={{ display: 'none' }} />
       </ReactFlow>
+
+      {/* Generating overlay — shown when generating and no screens yet */}
+      {isGenerating && app.screens.length === 0 && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>
+          <div style={{
+            textAlign: "center", padding: "48px 56px", borderRadius: 24, maxWidth: 420,
+            background: "color-mix(in oklch, var(--card) 85%, transparent)",
+            backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            boxShadow: "var(--shadow-card)",
+          }}>
+            {/* Animated dots */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+              {[0, 1, 2].map((i) => (
+                <div key={i} style={{
+                  width: 8, height: 8, borderRadius: "50%", background: C.wsAccent,
+                  animation: `wfPulse 1.4s ease ${i * 0.2}s infinite`,
+                }} />
+              ))}
+            </div>
+            <div style={{ fontFamily: SANS, fontSize: 15, color: C.text2, fontWeight: 600, marginBottom: 6, letterSpacing: "-0.01em" }}>
+              {genStep || "Starting generation..."}
+            </div>
+            <div style={{ fontFamily: SANS, fontSize: 13, color: C.text4, lineHeight: 1.5 }}>
+              Designing your app — this usually takes 30–60 seconds
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Empty state overlay */}
       {!isGenerating && app.screens.length === 0 && (
