@@ -90,6 +90,14 @@ async function getSkillInstructions(): Promise<string> {
     const skillPath = path.resolve(process.cwd(), "skill/frontend-design");
     const skill = await loadSkillFromDir(skillPath);
     cachedSkillContent = skill.instructions;
+    console.log(`[DesignAgent] Skill loaded: ${cachedSkillContent.length} chars`);
+    // Log reference sections found
+    const refs = cachedSkillContent.match(/=== REFERENCE: .+ ===/g);
+    if (refs) {
+      console.log(`[DesignAgent] References loaded: ${refs.map(r => r.replace(/=== REFERENCE: | ===/g, '')).join(', ')}`);
+    } else {
+      console.log(`[DesignAgent] No references found`);
+    }
   }
   return cachedSkillContent;
 }
