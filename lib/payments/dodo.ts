@@ -15,10 +15,10 @@ export const PLAN_PRICES: Record<Exclude<PlanId, "free">, { monthly: number; ann
 /** Annual discount percentage */
 export const ANNUAL_DISCOUNT = 56;
 
-/** Map Dodo product IDs → plan IDs */
+/** Map Dodo product IDs → plan IDs (server-side only) */
 export const PLAN_PRODUCT_IDS: Record<string, PlanId> = {
-  [process.env.NEXT_PUBLIC_DODO_PRO_MONTHLY_PRODUCT_ID ?? ""]: "pro",
-  [process.env.NEXT_PUBLIC_DODO_PRO_ANNUAL_PRODUCT_ID ?? ""]: "pro",
-  [process.env.NEXT_PUBLIC_DODO_ULTRA_MONTHLY_PRODUCT_ID ?? ""]: "ultra",
-  [process.env.NEXT_PUBLIC_DODO_ULTRA_ANNUAL_PRODUCT_ID ?? ""]: "ultra",
+  [process.env.DODO_PRO_MONTHLY_PRODUCT_ID ?? ""]: "pro",
+  [process.env.DODO_PRO_ANNUAL_PRODUCT_ID ?? ""]: "pro",
+  [process.env.DODO_ULTRA_MONTHLY_PRODUCT_ID ?? ""]: "ultra",
+  [process.env.DODO_ULTRA_ANNUAL_PRODUCT_ID ?? ""]: "ultra",
 };

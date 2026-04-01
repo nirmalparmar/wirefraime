@@ -54,26 +54,9 @@ export function Pricing() {
     return Math.round(monthly * (1 - ANNUAL_DISCOUNT / 100));
   }
 
-  function getProductId(slug: "pro" | "ultra", isAnnual: boolean): string | null {
-    const key = `NEXT_PUBLIC_DODO_${slug.toUpperCase()}_${isAnnual ? "ANNUAL" : "MONTHLY"}_PRODUCT_ID`;
-    const ids: Record<string, string | undefined> = {
-      NEXT_PUBLIC_DODO_PRO_MONTHLY_PRODUCT_ID: process.env.NEXT_PUBLIC_DODO_PRO_MONTHLY_PRODUCT_ID,
-      NEXT_PUBLIC_DODO_PRO_ANNUAL_PRODUCT_ID: process.env.NEXT_PUBLIC_DODO_PRO_ANNUAL_PRODUCT_ID,
-      NEXT_PUBLIC_DODO_ULTRA_MONTHLY_PRODUCT_ID: process.env.NEXT_PUBLIC_DODO_ULTRA_MONTHLY_PRODUCT_ID,
-      NEXT_PUBLIC_DODO_ULTRA_ANNUAL_PRODUCT_ID: process.env.NEXT_PUBLIC_DODO_ULTRA_ANNUAL_PRODUCT_ID,
-    };
-    return ids[key] ?? null;
-  }
-
   async function handleCheckout(slug: "pro" | "ultra") {
     if (!isSignedIn) {
       window.location.href = `/sign-up?redirect_url=${encodeURIComponent("/dashboard")}`;
-      return;
-    }
-
-    const productId = getProductId(slug, annual);
-    if (!productId) {
-      console.error("Product ID not configured for", slug, annual ? "annual" : "monthly");
       return;
     }
 
@@ -82,18 +65,13 @@ export function Pricing() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_cart: [
-            { product_id: productId, quantity: 1 },
-          ],
-          metadata: {
-            clerk_user_id: "pending",
-          },
-        }),
+        body: JSON.stringify({ plan: slug, annual }),
       });
       const data = await res.json();
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
+      } else {
+        console.error("Checkout error:", data.error);
       }
     } catch (err) {
       console.error("Checkout error:", err);
