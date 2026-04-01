@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   // Lazy import to avoid build-time crash when env var is empty
   const { Webhooks } = await import("@dodopayments/nextjs");
 
-  const webhookKey = process.env.DODO_PAYMENTS_WEBHOOK_KEY;
+  const webhookKey = process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
   if (!webhookKey) {
     return NextResponse.json({ error: "Webhook key not configured" }, { status: 500 });
   }
