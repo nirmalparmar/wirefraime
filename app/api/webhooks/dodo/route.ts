@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
 
 async function handleSubscriptionActivated(payload: any) {
   const data = payload.data;
+  console.log("Subscription activated:", data);
   const clerkUserId = data?.metadata?.clerk_user_id;
   if (!clerkUserId) return;
 
