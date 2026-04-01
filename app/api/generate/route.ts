@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { users, projects, screens } from "@/lib/db/schema";
@@ -115,7 +116,11 @@ export async function POST(req: NextRequest) {
 
         // Check if planned screens would exceed remaining quota
         const remaining = quota.limit - quota.screensUsed;
-        const screensToGenerate = plannedScreens.slice(0, remaining);
+        // Replace Gemini's slug IDs with real UUIDs for DB compatibility
+        const screensToGenerate = plannedScreens.slice(0, remaining).map((s) => ({
+          ...s,
+          id: randomUUID(),
+        }));
 
         const fontName = designSystem.fonts.primary.split(",")[0].trim();
         const dsDetail = `${fontName} · ${designSystem.colors.primary} · ${platform} · ${designSystem.layout?.navStyle ?? "topbar"} nav`;

@@ -5,6 +5,7 @@ import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
 import { loadSkillFromDir, streamWithGemini } from "./adk-helpers";
 import { generateHtmlHead, generateSharedCSS, injectSharedCSS, extractReferencePatterns } from "../design-template";
+import { randomUUID } from "crypto";
 import path from "path";
 
 const MODEL = "gemini-3.1-pro-preview";
@@ -711,7 +712,7 @@ For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
   // ── Handle CREATE action ─────────────────────────────────
   if (plan.action === "create") {
     const newScreenName = plan.newScreenName || "New Screen";
-    const newScreenId = `screen-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const newScreenId = randomUUID();
 
     yield {
       type: "plan",
