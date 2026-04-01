@@ -38,9 +38,11 @@ function resizeImage(file: File): Promise<string> {
 export function FloatingInput({
   streamChunksRef,
   forceCanvasUpdate,
+  onStop,
 }: {
   streamChunksRef: React.MutableRefObject<Map<string, string[]>>;
   forceCanvasUpdate: () => void;
+  onStop?: () => void;
 }) {
   const { state, dispatch } = useWorkspace();
   const { app, activeScreenId, isGenerating, isSending, selectedElement } = state;
@@ -48,6 +50,7 @@ export function FloatingInput({
   const [inputValue, setInputValue] = useState("");
   const [imageData, setImageData] = useState<string | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
+  const chatAbortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,6 +115,8 @@ export function FloatingInput({
     setInputValue("");
     setImageData(null);
     dispatch({ type: "SET_SENDING", isSending: true });
+    const chatController = new AbortController();
+    chatAbortRef.current = chatController;
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     const planStepId = uuid();
@@ -125,6 +130,7 @@ export function FloatingInput({
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: chatController.signal,
         body: JSON.stringify({
           message: userMsg.content,
           screens: app.screens,
@@ -325,9 +331,15 @@ export function FloatingInput({
         }
       }
     } catch {
-      dispatch({ type: "UPDATE_MESSAGE", id: aiMsgId, content: "Something went wrong. Please try again." });
-      dispatch({ type: "UPDATE_AGENT_STEP", messageId: aiMsgId, stepId: planStepId, updates: { status: "error" } });
+      if (chatController.signal.aborted) {
+        dispatch({ type: "UPDATE_MESSAGE", id: aiMsgId, content: "Stopped." });
+        dispatch({ type: "UPDATE_AGENT_STEP", messageId: aiMsgId, stepId: planStepId, updates: { status: "done", detail: "Stopped by user" } });
+      } else {
+        dispatch({ type: "UPDATE_MESSAGE", id: aiMsgId, content: "Something went wrong. Please try again." });
+        dispatch({ type: "UPDATE_AGENT_STEP", messageId: aiMsgId, stepId: planStepId, updates: { status: "error" } });
+      }
     } finally {
+      chatAbortRef.current = null;
       dispatch({ type: "SET_SENDING", isSending: false });
     }
   }
@@ -338,6 +350,14 @@ export function FloatingInput({
 
   const canSend = (inputValue.trim() || imageData) && !isSending && !isGenerating;
   const isDisabled = isGenerating || isSending;
+  const isActive = isGenerating || isSending;
+
+  function handleStop() {
+    // Stop chat request
+    chatAbortRef.current?.abort();
+    // Stop generation (from parent)
+    onStop?.();
+  }
 
   return (
     <div className="absolute bottom-5 left-1/2 z-30 w-full max-w-[680px] -translate-x-1/2 px-4">
@@ -452,15 +472,27 @@ export function FloatingInput({
               </span>
             )}
 
-            <button
-              className={`grid size-8 shrink-0 place-items-center rounded-xl transition-all ${canSend ? "bg-foreground text-background shadow-sm hover:opacity-80" : "text-foreground/15"}`}
-              onClick={handleSend}
-              disabled={!canSend}
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M8 13V3M4 7l4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            {isActive ? (
+              <button
+                className="grid size-8 shrink-0 place-items-center rounded-xl bg-foreground text-background shadow-sm transition-all hover:opacity-80"
+                onClick={handleStop}
+                title="Stop"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                  <rect x="1" y="1" width="10" height="10" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                className={`grid size-8 shrink-0 place-items-center rounded-xl transition-all ${canSend ? "bg-foreground text-background shadow-sm hover:opacity-80" : "text-foreground/15"}`}
+                onClick={handleSend}
+                disabled={!canSend}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 13V3M4 7l4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>

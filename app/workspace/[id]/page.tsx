@@ -287,7 +287,15 @@ function WorkspaceShell() {
       />
 
       {/* Floating bottom input */}
-      <FloatingInput streamChunksRef={streamChunksRef} forceCanvasUpdate={forceUpdate} />
+      <FloatingInput
+        streamChunksRef={streamChunksRef}
+        forceCanvasUpdate={forceUpdate}
+        onStop={() => {
+          abortRef.current?.abort();
+          streamChunksRef.current.clear();
+          dispatch({ type: "SET_GENERATING", isGenerating: false });
+        }}
+      />
 
       {/* Property panel overlay */}
       <PropertyPanel iframeRef={iframeRef} />
