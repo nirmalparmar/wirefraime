@@ -27,12 +27,21 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     where: and(eq(screens.id, screenId), eq(screens.projectId, projectId)),
     columns: { storageKey: true },
   });
-  if (!screen?.storageKey) return new Response("", { status: 200 });
+  if (!screen?.storageKey) {
+    console.warn(`[HTML GET] Screen ${screenId} has no storageKey`);
+    return new Response("", { status: 200 });
+  }
 
-  const html = await getScreenHtml(screen.storageKey);
-  return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+  try {
+    const html = await getScreenHtml(screen.storageKey);
+    console.log(`[HTML GET] Screen ${screenId}: ${html.length} chars from ${screen.storageKey}`);
+    return new Response(html, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  } catch (err) {
+    console.error(`[HTML GET] S3 download failed for ${screen.storageKey}:`, err);
+    return new Response("", { status: 500 });
+  }
 }
 
 /** PUT /api/projects/[id]/screens/[screenId]/html — write HTML to S3 */

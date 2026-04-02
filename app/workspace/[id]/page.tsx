@@ -459,9 +459,16 @@ export default function WorkspacePage() {
         for (const s of screensMeta) {
           if (s.storageKey) {
             fetch(`/api/projects/${id}/screens/${s.id}/html`)
-              .then((r) => r.ok ? r.text() : "")
+              .then((r) => {
+                if (!r.ok) {
+                  console.error(`[Screen ${s.id}] HTML fetch failed: ${r.status} ${r.statusText}`);
+                  return "";
+                }
+                return r.text();
+              })
               .then((html) => {
                 if (html) {
+                  console.log(`[Screen ${s.id}] Loaded ${html.length} chars`);
                   setApp((prev) => {
                     if (!prev) return prev;
                     return {
@@ -471,9 +478,11 @@ export default function WorkspacePage() {
                       ),
                     };
                   });
+                } else {
+                  console.warn(`[Screen ${s.id}] Empty HTML response`);
                 }
               })
-              .catch(() => {});
+              .catch((e) => console.error(`[Screen ${s.id}] Fetch error:`, e));
           }
         }
       } catch {
