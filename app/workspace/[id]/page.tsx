@@ -326,6 +326,27 @@ function WorkspaceShell() {
     iframeRef.current = el;
   }, []);
 
+  // Lazy-load screen HTML from S3 on mount
+  const didLoadHtml = useRef(false);
+  useEffect(() => {
+    if (didLoadHtml.current) return;
+    didLoadHtml.current = true;
+
+    for (const screen of state.app.screens) {
+      if (!screen.html && screen.id) {
+        fetch(`/api/projects/${state.app.id}/screens/${screen.id}/html`)
+          .then((r) => r.ok ? r.text() : "")
+          .then((html) => {
+            if (html) {
+              dispatch({ type: "UPDATE_SCREEN_HTML", screenId: screen.id, html });
+            }
+          })
+          .catch(() => {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-generate on first load
   const didAutoGenerate = useRef(false);
 
@@ -454,37 +475,6 @@ export default function WorkspacePage() {
         };
 
         setApp(wireframeApp);
-
-        // Lazy-load screen HTML from S3
-        for (const s of screensMeta) {
-          if (s.storageKey) {
-            fetch(`/api/projects/${id}/screens/${s.id}/html`)
-              .then((r) => {
-                if (!r.ok) {
-                  console.error(`[Screen ${s.id}] HTML fetch failed: ${r.status} ${r.statusText}`);
-                  return "";
-                }
-                return r.text();
-              })
-              .then((html) => {
-                if (html) {
-                  console.log(`[Screen ${s.id}] Loaded ${html.length} chars`);
-                  setApp((prev) => {
-                    if (!prev) return prev;
-                    return {
-                      ...prev,
-                      screens: prev.screens.map((sc) =>
-                        sc.id === s.id ? { ...sc, html } : sc
-                      ),
-                    };
-                  });
-                } else {
-                  console.warn(`[Screen ${s.id}] Empty HTML response`);
-                }
-              })
-              .catch((e) => console.error(`[Screen ${s.id}] Fetch error:`, e));
-          }
-        }
       } catch {
         router.push("/dashboard");
       }
