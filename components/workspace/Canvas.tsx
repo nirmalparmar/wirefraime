@@ -20,6 +20,49 @@ import { LiveIframe } from "./LiveIframe";
 import { SERIF, SANS, C, VIEWPORTS } from "@/lib/constants";
 import type { SelectedElement } from "@/lib/store/use-workspace";
 
+/* ── PNG export helper ── */
+async function exportScreenPng(html: string, vpW: number, screenName: string) {
+  const slug = screenName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  // Create a hidden iframe to render the HTML at full resolution
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = `position:fixed;left:-9999px;top:0;width:${vpW}px;height:100vh;border:none;opacity:0;pointer-events:none;`;
+  document.body.appendChild(iframe);
+
+  try {
+    await new Promise<void>((resolve) => {
+      iframe.onload = () => resolve();
+      iframe.srcdoc = html;
+    });
+
+    // Wait for images / fonts to settle
+    await new Promise((r) => setTimeout(r, 500));
+
+    const doc = iframe.contentDocument;
+    if (!doc?.body) throw new Error("Failed to render screen");
+
+    // Measure actual content height
+    const contentH = doc.documentElement.scrollHeight;
+    iframe.style.height = `${contentH}px`;
+    await new Promise((r) => setTimeout(r, 100));
+
+    const { toPng } = await import("html-to-image");
+    const dataUrl = await toPng(doc.documentElement, {
+      width: vpW,
+      height: contentH,
+      pixelRatio: 2,
+      cacheBust: true,
+    });
+
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = `${slug}.png`;
+    a.click();
+  } finally {
+    document.body.removeChild(iframe);
+  }
+}
+
 const GRID_COLS = 3;
 const CARD_GAP = 80;
 const LABEL_H = 44;
@@ -55,6 +98,7 @@ type ScreenNode = Node<ScreenNodeData, "screen">;
 /* ── Custom node ── */
 function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
   const { vpW, vpH, contentHeight } = data;
+  const [exporting, setExporting] = useState(false);
   // Use actual content height when available; fall back to viewport height only during streaming or before report
   const displayH = contentHeight > 0 ? contentHeight : vpH;
 
@@ -97,6 +141,35 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.wsAccent, display: "inline-block", animation: "wfPulse 1.4s ease infinite" }} />
             live
           </span>
+        )}
+        {!data.isStreaming && data.html && (
+          <button
+            title="Export PNG"
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (exporting) return;
+              setExporting(true);
+              try { await exportScreenPng(data.html, vpW, data.screenName); }
+              catch (err) { console.error("PNG export failed:", err); }
+              finally { setExporting(false); }
+            }}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 24, height: 24, borderRadius: 6, border: "none", cursor: "pointer",
+              background: exporting ? C.borderSub : "transparent",
+              color: C.text4, transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = C.borderSub; e.currentTarget.style.color = C.text2; }}
+            onMouseLeave={(e) => { if (!exporting) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.text4; } }}
+          >
+            {exporting ? (
+              <span style={{ width: 12, height: 12, border: `2px solid ${C.text4}`, borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "wfPulse 0.8s linear infinite" }} />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3v13" /><path d="M8 12l4 4 4-4" /><path d="M20 19H4" />
+              </svg>
+            )}
+          </button>
         )}
       </div>
 
@@ -400,7 +473,7 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
         defaultViewport={{ x: 60, y: 40, zoom: CANVAS_W <= 500 ? 0.75 : CANVAS_W <= 1024 ? 0.4 : 0.3 }}
-        zoomOnScroll={true}
+        zoomOnScroll={false}
         zoomOnPinch={true}
         zoomOnDoubleClick={false}
         panOnScroll={true}
