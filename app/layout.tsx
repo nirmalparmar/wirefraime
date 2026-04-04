@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Instrument_Serif } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { GoogleAnalytics } from '@next/third-parties/google'
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -52,6 +53,7 @@ export default function RootLayout({
             {children}
           </ThemeProvider>
         </ClerkProvider>
+        <GoogleAnalytics gaId="G-THR3PQGCT7" />
       </body>
     </html>
   );
