@@ -1,5 +1,3 @@
-import { LogoMark } from "./logo-mark";
-
 const COLUMNS = [
   {
     title: "Product",
@@ -28,7 +26,7 @@ export function Footer() {
               href="#"
               className="mb-3 flex items-center gap-2.5 font-serif text-lg text-foreground no-underline"
             >
-              <LogoMark />
+              <img src="/logo.svg" alt="Logo" width={28} height={28} />
               Wirefraime
             </a>
             <p className="max-w-[280px] text-sm leading-relaxed text-muted-foreground">

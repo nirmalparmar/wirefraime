@@ -189,11 +189,11 @@ export default function Dashboard() {
             designSystem: r.designSystem ?? r.design_system ?? null,
             screens: Array.isArray(r.screens)
               ? (r.screens as Record<string, unknown>[]).map((s) => ({
-                  id: s.id as string,
-                  name: s.name as string,
-                  html: "",
-                  isStreaming: false,
-                }))
+                id: s.id as string,
+                name: s.name as string,
+                html: "",
+                isStreaming: false,
+              }))
               : [],
             messages: [],
             createdAt: new Date(r.createdAt as string).getTime(),
@@ -294,11 +294,7 @@ export default function Dashboard() {
             href="/"
             className="flex items-center gap-2 font-serif text-lg text-foreground no-underline"
           >
-            {theme === "dark" ? (
-              <img src="/logo-dark.png" alt="Logo" width={24} height={24} />
-            ) : (
-              <img src="/logo.png" alt="Logo" width={24} height={24} />
-            )}
+            <img src="/logo.png" alt="Logo" width={24} height={24} />
             <span>
               Wirefr<span className="text-primary">ai</span>me
             </span>
