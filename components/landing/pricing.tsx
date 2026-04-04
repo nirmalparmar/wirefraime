@@ -141,7 +141,7 @@ export function Pricing() {
                 key={card.plan}
                 className={`liquid-glass-adaptive relative rounded-xl p-7 transition-all md:p-8 ${
                   card.featured
-                    ? "ring-1 ring-primary/30 shadow-[0_0_32px_rgba(234,88,12,0.08)]"
+                    ? "ring-1 ring-primary/30 shadow-[0_0_32px_rgba(220,38,38,0.08)]"
                     : "hover:bg-foreground/[0.03]"
                 }`}
               >

@@ -217,8 +217,8 @@ export async function POST(req: NextRequest) {
 
         send("done", {});
       } catch (err) {
-        console.error("Generate error:", err);
-        send("error", { message: String(err) });
+        console.error("[POST /api/generate] Generate error:", err);
+        send("error", { message: "Something went wrong. Please try again." });
       } finally {
         if (!closed) {
           try {

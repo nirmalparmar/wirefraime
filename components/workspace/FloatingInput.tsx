@@ -92,6 +92,37 @@ export function FloatingInput({
   async function handleSend() {
     if ((!inputValue.trim() && !imageData) || isSending || isGenerating) return;
 
+    // Guard: ensure active screen has HTML loaded before editing
+    const screensWithHtml = app.screens.filter((s) => s.html && s.html.trim().length > 0);
+    if (screensWithHtml.length === 0) {
+      dispatch({
+        type: "ADD_MESSAGE",
+        message: {
+          id: uuid(),
+          role: "assistant",
+          content: "Screens are still loading. Please wait a moment and try again.",
+          timestamp: Date.now(),
+        },
+      });
+      return;
+    }
+
+    if (activeScreenId) {
+      const activeHtml = app.screens.find((s) => s.id === activeScreenId);
+      if (activeHtml && (!activeHtml.html || activeHtml.html.trim().length === 0)) {
+        dispatch({
+          type: "ADD_MESSAGE",
+          message: {
+            id: uuid(),
+            role: "assistant",
+            content: `"${activeHtml.name}" is still loading. Please wait a moment and try again.`,
+            timestamp: Date.now(),
+          },
+        });
+        return;
+      }
+    }
+
     const userMsg: Message = {
       id: uuid(),
       role: "user",
@@ -133,7 +164,7 @@ export function FloatingInput({
         signal: chatController.signal,
         body: JSON.stringify({
           message: userMsg.content,
-          screens: app.screens,
+          screens: screensWithHtml,
           designSystem: app.designSystem,
           platform: app.platform ?? "web",
           messages: app.messages,
@@ -330,13 +361,14 @@ export function FloatingInput({
           }
         }
       }
-    } catch {
+    } catch (chatErr) {
       if (chatController.signal.aborted) {
         dispatch({ type: "UPDATE_MESSAGE", id: aiMsgId, content: "Stopped." });
         dispatch({ type: "UPDATE_AGENT_STEP", messageId: aiMsgId, stepId: planStepId, updates: { status: "done", detail: "Stopped by user" } });
       } else {
-        dispatch({ type: "UPDATE_MESSAGE", id: aiMsgId, content: "Something went wrong. Please try again." });
-        dispatch({ type: "UPDATE_AGENT_STEP", messageId: aiMsgId, stepId: planStepId, updates: { status: "error" } });
+        const errMsg = chatErr instanceof Error ? chatErr.message : "Something went wrong. Please try again.";
+        dispatch({ type: "UPDATE_MESSAGE", id: aiMsgId, content: errMsg });
+        dispatch({ type: "UPDATE_AGENT_STEP", messageId: aiMsgId, stepId: planStepId, updates: { status: "error", detail: errMsg } });
       }
     } finally {
       chatAbortRef.current = null;

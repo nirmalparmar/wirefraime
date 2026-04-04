@@ -13,32 +13,37 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { userId: clerkId } = await auth();
   if (!clerkId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const internalId = await resolveUserId(clerkId);
-  const { id: projectId, screenId } = await ctx.params;
+  try {
+    const internalId = await resolveUserId(clerkId);
+    const { id: projectId, screenId } = await ctx.params;
 
-  // Verify ownership
-  const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, projectId), eq(projects.userId, internalId)),
-    columns: { id: true },
-  });
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Verify ownership
+    const project = await db.query.projects.findFirst({
+      where: and(eq(projects.id, projectId), eq(projects.userId, internalId)),
+      columns: { id: true },
+    });
+    if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const body = await req.json();
-  const allowed: Record<string, unknown> = {};
-  if (body.name !== undefined) allowed.name = body.name;
-  if (body.sortOrder !== undefined) allowed.sortOrder = body.sortOrder;
-  if (body.storageKey !== undefined) allowed.storageKey = body.storageKey;
-  if (body.htmlSize !== undefined) allowed.htmlSize = body.htmlSize;
-  allowed.updatedAt = new Date();
+    const body = await req.json();
+    const allowed: Record<string, unknown> = {};
+    if (body.name !== undefined) allowed.name = body.name;
+    if (body.sortOrder !== undefined) allowed.sortOrder = body.sortOrder;
+    if (body.storageKey !== undefined) allowed.storageKey = body.storageKey;
+    if (body.htmlSize !== undefined) allowed.htmlSize = body.htmlSize;
+    allowed.updatedAt = new Date();
 
-  const [row] = await db
-    .update(screens)
-    .set(allowed)
-    .where(and(eq(screens.id, screenId), eq(screens.projectId, projectId)))
-    .returning();
+    const [row] = await db
+      .update(screens)
+      .set(allowed)
+      .where(and(eq(screens.id, screenId), eq(screens.projectId, projectId)))
+      .returning();
 
-  if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(row);
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(row);
+  } catch (error) {
+    console.error("[PATCH /api/projects/[id]/screens/[screenId]] Error:", error);
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  }
 }
 
 /** DELETE /api/projects/[id]/screens/[screenId] */
@@ -46,25 +51,30 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   const { userId: clerkId } = await auth();
   if (!clerkId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const internalId = await resolveUserId(clerkId);
-  const { id: projectId, screenId } = await ctx.params;
+  try {
+    const internalId = await resolveUserId(clerkId);
+    const { id: projectId, screenId } = await ctx.params;
 
-  const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, projectId), eq(projects.userId, internalId)),
-    columns: { id: true },
-  });
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const project = await db.query.projects.findFirst({
+      where: and(eq(projects.id, projectId), eq(projects.userId, internalId)),
+      columns: { id: true },
+    });
+    if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Get storage key before deleting
-  const screen = await db.query.screens.findFirst({
-    where: and(eq(screens.id, screenId), eq(screens.projectId, projectId)),
-    columns: { storageKey: true },
-  });
+    // Get storage key before deleting
+    const screen = await db.query.screens.findFirst({
+      where: and(eq(screens.id, screenId), eq(screens.projectId, projectId)),
+      columns: { storageKey: true },
+    });
 
-  if (screen?.storageKey) {
-    try { await deleteScreenFile(screen.storageKey); } catch {}
+    if (screen?.storageKey) {
+      try { await deleteScreenFile(screen.storageKey); } catch {}
+    }
+
+    await db.delete(screens).where(and(eq(screens.id, screenId), eq(screens.projectId, projectId)));
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    console.error("[DELETE /api/projects/[id]/screens/[screenId]] Error:", error);
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
-
-  await db.delete(screens).where(and(eq(screens.id, screenId), eq(screens.projectId, projectId)));
-  return NextResponse.json({ deleted: true });
 }

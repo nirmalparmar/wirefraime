@@ -10,7 +10,8 @@ export async function POST(req: NextRequest) {
 
   const webhookKey = process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
   if (!webhookKey) {
-    return new Response("Webhook key not configured", { status: 500 });
+    console.error("[POST /api/webhooks/dodo] Webhook key not configured");
+    return new Response("Internal server error", { status: 500 });
   }
 
   const handler = Webhooks({
@@ -41,7 +42,12 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return handler(req);
+  try {
+    return await handler(req);
+  } catch (error) {
+    console.error("[POST /api/webhooks/dodo] Webhook handler error:", error);
+    return new Response("Internal server error", { status: 500 });
+  }
 }
 
 function extractClerkId(data: Record<string, unknown>): string | null {

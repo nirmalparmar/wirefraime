@@ -22,11 +22,7 @@ export function Navbar() {
           href="/"
           className="flex items-center gap-2 font-serif text-lg text-foreground no-underline"
         >
-          {theme === "dark" ? (
-            <img src="/logo-dark.png" alt="Logo" width={24} height={24} />
-          ) : (
-            <img src="/logo.png" alt="Logo" width={24} height={24} />
-          )}
+          <img src="/logo.svg" alt="Logo" width={28} height={28} />
           <span>
             Wirefr<span className="text-primary">ai</span>me
           </span>

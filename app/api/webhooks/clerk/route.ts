@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ received: true });
   } catch (err) {
-    console.error("Clerk webhook error:", err);
+    console.error("[POST /api/webhooks/clerk] Webhook error:", err);
     return new Response("Webhook verification failed", { status: 400 });
   }
 }

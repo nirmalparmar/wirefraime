@@ -172,6 +172,7 @@ export default function Dashboard() {
   const [isCreating, setIsCreating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -213,6 +214,7 @@ export default function Dashboard() {
   async function handleCreate() {
     if (!name.trim() || !description.trim()) return;
     setIsCreating(true);
+    setQuotaError(null);
     try {
       const res = await fetch("/api/projects", {
         method: "POST",
@@ -222,9 +224,17 @@ export default function Dashboard() {
       if (res.ok) {
         const row = await res.json();
         router.push(`/workspace/${row.id}`);
+      } else if (res.status === 403) {
+        const data = await res.json();
+        setQuotaError(data.error ?? "You've reached your screen limit. Upgrade to continue.");
+        setIsCreating(false);
+      } else {
+        setQuotaError("Something went wrong. Please try again.");
+        setIsCreating(false);
       }
     } catch (e) {
       console.error("Failed to create project:", e);
+      setQuotaError("Something went wrong. Please try again.");
       setIsCreating(false);
     }
   }
@@ -619,10 +629,28 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {quotaError && (
+            <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0 text-destructive">
+                <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <div className="flex-1 text-sm">
+                <p className="font-medium text-destructive">{quotaError}</p>
+                <Link
+                  href="/dashboard/billing"
+                  className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2 hover:no-underline"
+                >
+                  View plans &amp; upgrade
+                </Link>
+              </div>
+            </div>
+          )}
+
           <DialogFooter className="gap-2 pt-2">
             <Button
               variant="ghost"
-              onClick={() => setShowCreate(false)}
+              onClick={() => { setShowCreate(false); setQuotaError(null); }}
               className="text-muted-foreground"
             >
               Cancel

@@ -10,9 +10,15 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const app = await req.json();
-  const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  await mkdir(SHARE_DIR, { recursive: true });
-  await writeFile(join(SHARE_DIR, `${id}.json`), JSON.stringify(app));
-  return NextResponse.json({ id, url: `/preview/${id}` });
+
+  try {
+    const app = await req.json();
+    const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    await mkdir(SHARE_DIR, { recursive: true });
+    await writeFile(join(SHARE_DIR, `${id}.json`), JSON.stringify(app));
+    return NextResponse.json({ id, url: `/preview/${id}` });
+  } catch (error) {
+    console.error("[POST /api/share] Error:", error);
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  }
 }

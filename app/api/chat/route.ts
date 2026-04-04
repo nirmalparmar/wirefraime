@@ -58,9 +58,18 @@ export async function POST(req: NextRequest) {
       }
 
       try {
+        // Filter out screens with no HTML — prevents empty-screen edits
+        const validScreens = screens.filter((s: Screen) => s.html && s.html.trim().length > 0);
+        if (validScreens.length === 0) {
+          send("error", { message: "No screens with content to edit. Please wait for screens to finish loading." });
+          if (!closed) controller.close();
+          closed = true;
+          return;
+        }
+
         send("step", { label: "Planning..." });
 
-        for await (const evt of streamChatEdit(message, screens, designSystem, messages, platform ?? "web", image, selectedElement, appName, appDescription, activeScreenId)) {
+        for await (const evt of streamChatEdit(message, validScreens, designSystem, messages, platform ?? "web", image, selectedElement, appName, appDescription, activeScreenId)) {
           if (evt.type === "plan") {
             send("plan", {
               reply: evt.reply,
@@ -132,8 +141,8 @@ export async function POST(req: NextRequest) {
 
         send("done", {});
       } catch (err) {
-        console.error("Chat error:", err);
-        send("error", { message: String(err) });
+        console.error("[POST /api/chat] Chat error:", err);
+        send("error", { message: "Something went wrong. Please try again." });
       } finally {
         if (!closed) {
           try {

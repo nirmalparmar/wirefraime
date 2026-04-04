@@ -73,6 +73,13 @@ async function runGenerate(
       signal,
     });
 
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      throw Object.assign(
+        new Error(errData.error ?? "Screen limit reached. Upgrade your plan to continue."),
+        { quota: true }
+      );
+    }
     if (!res.ok || !res.body) throw new Error("Generation failed");
 
     const reader = res.body.getReader();
@@ -202,6 +209,22 @@ async function runGenerate(
         stepId: currentStepId,
         updates: { status: "error", detail: errMsg },
       });
+    }
+
+    // Don't retry on quota errors — show upgrade message
+    const isQuotaError = (err as { quota?: boolean })?.quota === true;
+    if (isQuotaError) {
+      dispatch({
+        type: "SET_GEN_STEP",
+        genStep: "",
+      });
+      dispatch({
+        type: "UPDATE_MESSAGE",
+        id: agentMsgId,
+        content: `${errMsg}\n\nGo to [Billing](/dashboard/billing) to upgrade your plan.`,
+      });
+      dispatch({ type: "SET_GENERATING", isGenerating: false });
+      return;
     }
 
     // Retry once if no screens were generated yet
