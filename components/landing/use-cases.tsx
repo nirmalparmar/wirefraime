@@ -73,7 +73,7 @@ export function UseCases() {
   return (
     <section className="px-5 py-20 md:px-12 md:py-28">
       <div className="mx-auto max-w-5xl">
-        <div className="reveal mb-12 md:mb-16">
+        <div className="mb-12 md:mb-16">
           <SectionHeading
             badge="Use Cases"
             title={
@@ -85,11 +85,11 @@ export function UseCases() {
           />
         </div>
 
-        <div className="reveal grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
           {CASES.map((c) => (
             <div
               key={c.title}
-              className="liquid-glass-adaptive group rounded-xl p-6 transition-all hover:bg-foreground/[0.03] md:p-7"
+              className="liquid-glass-adaptive group rounded-xl p-6 transition-all hover:bg-foreground/3 md:p-7"
             >
               <div className="mb-5 flex items-center justify-between">
                 <div className="grid size-11 place-items-center rounded-lg bg-primary/8 text-primary">

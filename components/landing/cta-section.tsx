@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 export function CTASection() {
   return (
     <section className="px-5 py-20 md:px-12 md:py-28">
-      <div className="reveal mx-auto max-w-5xl">
+      <div className="mx-auto max-w-5xl">
         <div className="liquid-glass-adaptive overflow-hidden rounded-2xl px-8 py-16 text-center md:px-16 md:py-20">
           {/* Ambient glow behind */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
@@ -13,11 +13,11 @@ export function CTASection() {
 
           <div className="relative">
             <h2 className="mx-auto max-w-lg font-serif text-[clamp(28px,3vw,44px)] leading-[1.1] tracking-tight text-foreground">
-              Start with a 14-day free trial of Pro.
+              Ready to design faster?
             </h2>
             <p className="mx-auto mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
-              Unlock AI-powered design for every screen, flow, and edge case.
-              Ship faster with complete app designs generated in seconds.
+              Describe your app, get every screen designed in seconds.
+              Export as HTML, Next.js, or PNG — ready for handoff.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button
@@ -25,7 +25,7 @@ export function CTASection() {
                 size="2xl"
                 asChild
               >
-                <Link href="/dashboard">Start for free</Link>
+                <Link href="/dashboard">Start Now</Link>
               </Button>
               <Button
                 variant="outline"

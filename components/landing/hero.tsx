@@ -168,14 +168,14 @@ export function Hero() {
         {/* Subtitle */}
         <p className="mx-auto mt-6 max-w-xl animate-[fadeUp_0.6s_0.16s_ease_both] text-lg leading-relaxed text-muted-foreground md:text-xl">
           Tell Wirefraime your app&apos;s purpose and users. AI generates every
-          screen, every flow, every edge case — fully designed in seconds.
+          screen, every flow, every edge case fully designed in seconds.
         </p>
 
         {/* CTAs */}
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3 animate-[fadeUp_0.6s_0.24s_ease_both]">
           <Button variant="clay" size="2xl" className="shadow-[0_0_24px_rgba(220,38,38,0.12)]" asChild>
             <Link href="/dashboard">
-              Start building free
+              Start building
               <span className="text-lg">→</span>
             </Link>
           </Button>
@@ -184,26 +184,16 @@ export function Hero() {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="mt-14 flex flex-wrap items-center justify-center gap-8 animate-[fadeUp_0.6s_0.32s_ease_both] md:gap-12">
-          {[
-            ["12K+", "designers"],
-            ["2.4s", "generation"],
-            ["800+", "components"],
-          ].map(([num, label]) => (
-            <div key={num} className="text-center">
-              <div className="font-serif text-2xl tracking-tight text-foreground md:text-3xl">
-                {num}
-              </div>
-              <div className="mt-1 text-xs font-medium text-muted-foreground">
-                {label}
-              </div>
-            </div>
-          ))}
+        {/* Powered by */}
+        <div className="mt-14 flex flex-wrap items-center justify-center gap-6 animate-[fadeUp_0.6s_0.32s_ease_both] text-sm text-muted-foreground md:gap-8">
+          <span className="text-[11px] font-medium uppercase tracking-widest">Powered by</span>
+          <span className="font-medium text-foreground/70">Gemini</span>
+          <span className="font-medium text-foreground/70">Claude</span>
+          <span className="font-medium text-foreground/70">Vercel AI SDK</span>
         </div>
 
         {/* Product screenshot */}
-        <div className="reveal mt-16 md:mt-20">
+        <div className="mt-16 md:mt-20">
           <div className="liquid-glass-adaptive overflow-hidden rounded-xl">
             <img
               src="/example.png"
@@ -215,7 +205,7 @@ export function Hero() {
         </div>
 
         {/* Demo typing card */}
-        <div className="reveal mt-12 md:mt-16">
+        <div className="mt-12 md:mt-16">
           <div className="liquid-glass-adaptive overflow-hidden rounded-xl">
             <div className="flex items-center justify-between border-b border-foreground/6 px-5 py-3">
               <div className="flex items-center gap-3">
@@ -236,7 +226,6 @@ export function Hero() {
             </div>
 
             <div className="grid min-h-[200px] md:grid-cols-2">
-              {/* Left: typing prompt */}
               <div className="flex flex-col border-b border-foreground/6 p-5 md:border-b-0 md:border-r md:p-7">
                 <div className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                   Describe your app
@@ -260,7 +249,6 @@ export function Hero() {
                 </div>
               </div>
 
-              {/* Right: preview skeleton */}
               <div className="flex flex-col gap-2 p-5 md:p-7">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                   Live preview

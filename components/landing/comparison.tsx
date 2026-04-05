@@ -14,7 +14,7 @@ const ROWS = [
 export function Comparison() {
   return (
     <section className="mx-auto max-w-5xl px-5 py-20 md:px-12 md:py-28">
-      <div className="reveal mb-12 md:mb-16">
+      <div className="mb-12 md:mb-16">
         <SectionHeading
           badge="Comparison"
           title={
@@ -27,9 +27,9 @@ export function Comparison() {
         />
       </div>
 
-      <div className="reveal liquid-glass-adaptive overflow-hidden rounded-xl">
+      <div className="liquid-glass-adaptive overflow-hidden rounded-xl">
         {/* Header */}
-        <div className="grid grid-cols-[1fr_140px_140px] border-b border-foreground/[0.06] px-5 py-3.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground md:grid-cols-[1fr_180px_180px] md:px-7">
+        <div className="grid grid-cols-[1fr_140px_140px] border-b border-foreground/6 px-5 py-3.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground md:grid-cols-[1fr_180px_180px] md:px-7">
           <span />
           <span className="text-center text-primary">Wirefraime</span>
           <span className="text-center">Traditional</span>
@@ -39,9 +39,8 @@ export function Comparison() {
         {ROWS.map((row, i) => (
           <div
             key={row.label}
-            className={`grid grid-cols-[1fr_140px_140px] items-center px-5 py-3.5 text-sm md:grid-cols-[1fr_180px_180px] md:px-7 ${
-              i < ROWS.length - 1 ? "border-b border-foreground/[0.06]" : ""
-            } ${i % 2 === 0 ? "bg-foreground/[0.02]" : ""}`}
+            className={`grid grid-cols-[1fr_140px_140px] items-center px-5 py-3.5 text-sm md:grid-cols-[1fr_180px_180px] md:px-7 ${i < ROWS.length - 1 ? "border-b border-foreground/6" : ""
+              } ${i % 2 === 0 ? "bg-foreground/2" : ""}`}
           >
             <span className="font-medium text-foreground">{row.label}</span>
             <span className="text-center font-medium text-primary">{row.wf}</span>

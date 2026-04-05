@@ -358,7 +358,7 @@
                 },
                 "opacity": 1
             },
-            "label": "Get Started Free",
+            "label": "Get Started",
             "variant": "primary",
             "interaction": {
                 "onClick": "navigate",

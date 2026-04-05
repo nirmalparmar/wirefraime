@@ -18,10 +18,10 @@ const PLANS = [
     features: [
       "50 screens / month",
       "Full component library",
-      "HTML & React export",
+      "HTML & Next.js export",
+      "PNG export per screen",
       "Chat refinement",
       "Design system generation",
-      "Priority support",
     ],
     cta: "Start Pro",
     ctaVariant: "outline" as const,
@@ -36,9 +36,7 @@ const PLANS = [
       "Everything in Pro",
       "Advanced AI models",
       "Custom design systems",
-      "Figma export",
-      "Team collaboration",
-      "Dedicated support",
+      "Priority support",
     ],
     cta: "Start Ultra",
     ctaVariant: "clay" as const,
@@ -86,7 +84,7 @@ export function Pricing() {
       className="px-5 py-20 md:px-12 md:py-28"
     >
       <div className="mx-auto max-w-4xl">
-        <div className="reveal mb-6 md:mb-10">
+        <div className="mb-6 md:mb-10">
           <SectionHeading
             badge="Pricing"
             title={
@@ -98,7 +96,7 @@ export function Pricing() {
         </div>
 
         {/* Toggle */}
-        <div className="reveal mb-10 flex items-center justify-center gap-3 md:mb-14">
+        <div className="mb-10 flex items-center justify-center gap-3 md:mb-14">
           <span
             className={`text-sm font-medium ${annual ? "text-muted-foreground" : "text-foreground"}`}
           >
@@ -108,14 +106,12 @@ export function Pricing() {
             role="switch"
             aria-checked={annual}
             onClick={() => setAnnual((p) => !p)}
-            className={`relative h-6 w-11 cursor-pointer rounded-full transition-colors ${
-              annual ? "bg-primary" : "bg-muted"
-            }`}
+            className={`relative h-6 w-11 cursor-pointer rounded-full transition-colors ${annual ? "bg-primary" : "bg-muted"
+              }`}
           >
             <div
-              className={`absolute top-[3px] left-[3px] size-[18px] rounded-full bg-white shadow-sm transition-transform ${
-                annual ? "translate-x-5" : ""
-              }`}
+              className={`absolute top-[3px] left-[3px] size-[18px] rounded-full bg-white shadow-sm transition-transform ${annual ? "translate-x-5" : ""
+                }`}
             />
           </button>
           <span
@@ -131,7 +127,7 @@ export function Pricing() {
         </div>
 
         {/* Cards */}
-        <div className="reveal grid gap-5 md:grid-cols-2">
+        <div className="grid gap-5 md:grid-cols-2">
           {PLANS.map((card) => {
             const isLoading = loadingPlan === card.slug;
             const price = annual ? annualPrice(card.priceMonthly) : card.priceMonthly;
@@ -139,11 +135,10 @@ export function Pricing() {
             return (
               <div
                 key={card.plan}
-                className={`liquid-glass-adaptive relative rounded-xl p-7 transition-all md:p-8 ${
-                  card.featured
-                    ? "ring-1 ring-primary/30 shadow-[0_0_32px_rgba(220,38,38,0.08)]"
-                    : "hover:bg-foreground/[0.03]"
-                }`}
+                className={`liquid-glass-adaptive relative rounded-xl p-7 transition-all md:p-8 ${card.featured
+                  ? "ring-1 ring-primary/30 shadow-[0_0_32px_rgba(220,38,38,0.08)]"
+                  : "hover:bg-foreground/3"
+                  }`}
               >
                 {card.featured && (
                   <div className="absolute -top-px left-1/2 -translate-x-1/2 rounded-b-lg bg-primary px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-white">
@@ -168,7 +163,7 @@ export function Pricing() {
                   )}
                 </div>
 
-                <div className="mb-6 h-px bg-foreground/[0.06]" />
+                <div className="mb-6 h-px bg-foreground/6" />
 
                 <ul className="mb-7 flex flex-col gap-3">
                   {card.features.map((text) => (

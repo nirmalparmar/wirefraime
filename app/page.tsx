@@ -10,7 +10,6 @@ import { UseCases } from "@/components/landing/use-cases";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { Integrations } from "@/components/landing/integrations";
 import { Comparison } from "@/components/landing/comparison";
-import { Testimonials } from "@/components/landing/testimonials";
 import { Pricing } from "@/components/landing/pricing";
 import { CTASection } from "@/components/landing/cta-section";
 import { FAQ } from "@/components/landing/faq";
@@ -42,7 +41,6 @@ export default function Home() {
       <HowItWorks />
       <Integrations />
       <Comparison />
-      <Testimonials />
       <Pricing />
       <CTASection />
       <FAQ />

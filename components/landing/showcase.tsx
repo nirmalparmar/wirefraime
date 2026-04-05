@@ -265,7 +265,7 @@ export function Showcase() {
   return (
     <section className="py-20 md:py-28">
       <div className="mx-auto max-w-5xl px-5 md:px-12">
-        <div className="reveal mb-12 md:mb-16">
+        <div className="mb-12 md:mb-16">
           <SectionHeading
             badge="Showcase"
             title={
@@ -281,7 +281,7 @@ export function Showcase() {
       {/* Horizontal scroll strip */}
       <div
         ref={scrollRef}
-        className="reveal scrollbar-none flex gap-5 overflow-x-auto px-[max(1.25rem,calc((100vw-64rem)/2+1.25rem))] pb-4 md:gap-6"
+        className="scrollbar-none flex gap-5 overflow-x-auto px-[max(1.25rem,calc((100vw-64rem)/2+1.25rem))] pb-4 md:gap-6"
       >
         {SHOWCASES.map((item) => (
           <div

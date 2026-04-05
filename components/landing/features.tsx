@@ -23,20 +23,20 @@ const FEATURES = [
   },
   {
     icon: "⊙",
-    title: "Export Anywhere",
-    desc: "One-click export as production HTML, Figma-ready designs, or React components — handoff without cleanup.",
+    title: "Export Ready",
+    desc: "One-click export as production HTML, Next.js project, or PNG screenshots — ready for handoff.",
   },
   {
     icon: "⊕",
-    title: "Team Collaboration",
-    desc: "Share live links, leave contextual comments, and build on the same design system together.",
+    title: "Design System",
+    desc: "Every project gets a generated design system — colors, fonts, spacing, components — all consistent across screens.",
   },
 ];
 
 export function Features() {
   return (
     <section id="features" className="mx-auto max-w-5xl px-5 py-20 md:px-12 md:py-28">
-      <div className="reveal mb-12 md:mb-16">
+      <div className="mb-12 md:mb-16">
         <SectionHeading
           badge="Features"
           title={
@@ -50,11 +50,11 @@ export function Features() {
         />
       </div>
 
-      <div className="reveal grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-3">
         {FEATURES.map((f) => (
           <div
             key={f.title}
-            className="liquid-glass-adaptive group rounded-xl p-7 transition-all hover:bg-foreground/[0.03] md:p-8"
+            className="liquid-glass-adaptive group rounded-xl p-7 transition-all hover:bg-foreground/3 md:p-8"
           >
             <div className="mb-5 grid size-10 place-items-center rounded-lg bg-primary/8 text-lg text-primary">
               {f.icon}
