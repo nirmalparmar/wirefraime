@@ -8,6 +8,7 @@ import type { WireframeApp, Message, DesignSystem, Screen, Platform, AgentStep }
 export interface SelectedElement {
   xpath: string;
   tagName: string;
+  className?: string;
   textContent: string;
   styles: {
     color: string;

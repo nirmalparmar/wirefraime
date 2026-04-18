@@ -370,6 +370,17 @@ function WorkspaceShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Warn before leaving with unsaved work
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (state.isGenerating || state.isSending || state.app.screens.length > 0) {
+        e.preventDefault();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [state.isGenerating, state.isSending, state.app.screens.length]);
+
   // Auto-generate on first load
   const didAutoGenerate = useRef(false);
 

@@ -4,11 +4,31 @@ import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
 import { loadSkillFromDir, streamWithGemini } from "./adk-helpers";
-import { generateHtmlHead, generateSharedCSS, injectSharedCSS, extractReferencePatterns } from "../design-template";
+import {
+  generateHtmlHead,
+  injectSharedCSS,
+  extractReferencePatterns,
+  extractMultiScreenPatterns,
+} from "../design-template";
+import {
+  extractJson,
+  stripLeadingFence,
+  validateAndRepairHtml,
+  applyPatchOps,
+} from "./html-utils";
 import { randomUUID } from "crypto";
 import path from "path";
 
-const MODEL = "gemini-3.1-pro-preview";
+/**
+ * Model selection by task.
+ * - PLANNING_MODEL: used for JSON-structured planners (design system, chat plan, patch ops).
+ *   Flash-lite frequently returns malformed JSON here — pro is worth the cost.
+ * - STREAMING_MODEL: used for long HTML bodies where speed matters more than reasoning.
+ * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
+ */
+const PLANNING_MODEL = "gemini-3.1-pro-preview";
+const STREAMING_MODEL = "gemini-3.1-flash-lite-preview";
+const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────
 
@@ -69,18 +89,24 @@ const ChatPlanSchema = z.object({
     .describe("Precise, detailed description of every change to make in the HTML, or for 'create': description of what the new screen should contain."),
 });
 
-const FastApplyResultSchema = z.object({
+const PatchOpsSchema = z.object({
   operations: z.array(z.object({
-    search: z.string().describe("Exact HTML snippet to find in the current document. Must match character-for-character including whitespace."),
-    replace: z.string().describe("The HTML snippet to replace it with. Use empty string to delete an element."),
-    description: z.string().describe("One-line human-readable summary, e.g. 'Change header background to blue'"),
-  })).describe("Ordered list of search/replace operations to apply sequentially."),
+    search: z.string().describe("HTML snippet to find. Must appear exactly ONCE in the document. Whitespace-tolerant matching is used, so slight indentation drift is OK — but structural content must match character-for-character."),
+    replace: z.string().describe("The HTML snippet to replace it with. Use empty string to delete an element. Preserve surrounding Tailwind class patterns."),
+    description: z.string().describe("One-line summary of this operation, e.g. 'Change header background to primary'"),
+  })).describe("Ordered list of patch operations. Each applies to the result of the previous."),
 });
 
-type FastApplyResult = z.infer<typeof FastApplyResultSchema>;
+const CritiqueSchema = z.object({
+  score: z.number().min(0).max(10).describe("Overall quality score 0-10"),
+  passes: z.boolean().describe("true if score >= 7 AND no critical issues"),
+  issues: z.array(z.string()).describe("Specific, actionable issues. Empty if the screen is good."),
+  refineInstruction: z.string().optional().describe("If passes=false, a concrete instruction for how to fix the issues in one regeneration pass."),
+});
 
 export type DesignPlan = z.infer<typeof DesignPlanSchema>;
 type ChatPlan = z.infer<typeof ChatPlanSchema>;
+type Critique = z.infer<typeof CritiqueSchema>;
 
 // ── Skill loading ─────────────────────────────────────────────
 
@@ -91,16 +117,141 @@ async function getSkillInstructions(): Promise<string> {
     const skill = await loadSkillFromDir(skillPath);
     cachedSkillContent = skill.instructions;
     console.log(`[DesignAgent] Skill loaded: ${cachedSkillContent.length} chars`);
-    // Log reference sections found
     const refs = cachedSkillContent.match(/=== REFERENCE: .+ ===/g);
     if (refs) {
-      console.log(`[DesignAgent] References loaded: ${refs.map(r => r.replace(/=== REFERENCE: | ===/g, '')).join(', ')}`);
-    } else {
-      console.log(`[DesignAgent] No references found`);
+      console.log(`[DesignAgent] References loaded: ${refs.map(r => r.replace(/=== REFERENCE: | ===/g, "")).join(", ")}`);
     }
   }
   return cachedSkillContent;
 }
+
+// ── Tailwind-first generation guidance (shared across prompts) ──────
+
+const TAILWIND_COMPONENT_GUIDE = `
+TAILWIND-FIRST RULES (NON-NEGOTIABLE):
+
+Generated HTML MUST use Tailwind utility classes directly. Do NOT use opaque component classes like "ds-card" or "ds-btn-primary". Every styling decision is visible in the class attribute so it can be edited by swapping classes.
+
+SEMANTIC TOKENS (registered in tailwind.config — use these everywhere):
+  Colors:
+    - bg-primary / text-primary / border-primary / bg-primary-soft / hover:bg-primary-hover
+    - bg-secondary / text-secondary
+    - bg-background (page) / bg-surface (cards/panels)
+    - text-foreground (body text) / text-muted (secondary text)
+    - border-border
+    - bg-success / text-success / bg-success-soft
+    - bg-error / text-error / bg-error-soft
+  Radii:
+    - rounded-card (default card/container)
+    - rounded-card-lg (large containers)
+    - rounded-btn (buttons, inputs)
+    - rounded-pill (badges, pill buttons)
+    - rounded-full (avatars, circle icons)
+  Shadows:
+    - shadow-card (default elevation)
+    - shadow-card-lg (elevated panels, modals)
+    - shadow-focus (focus rings)
+  Heights:
+    - h-btn (standard button height)
+    - h-input (standard input height)
+    - h-nav (navbar height)
+  Spacing aliases:
+    - p-card (card inner padding)
+    - gap-section / mb-section (section spacing)
+  Fonts:
+    - font-sans (default — body font, auto-loaded)
+    - font-mono (for code, numbers)
+
+COMPONENT PATTERNS — write these explicitly with Tailwind classes:
+
+Card (default):
+  <div class="bg-surface border border-border rounded-card shadow-card p-card">...</div>
+
+Card (large):
+  <div class="bg-surface border border-border rounded-card-lg shadow-card-lg p-card">...</div>
+
+Primary button:
+  <button class="inline-flex items-center justify-center gap-2 h-btn px-6 bg-primary text-white font-semibold rounded-btn transition hover:bg-primary-hover active:scale-[.98]">
+    <i class="iconoir-plus"></i> Add item
+  </button>
+
+Secondary button:
+  <button class="inline-flex items-center justify-center gap-2 h-btn px-6 bg-transparent text-foreground font-medium border border-border rounded-btn transition hover:bg-surface">
+    Cancel
+  </button>
+
+Ghost button:
+  <button class="inline-flex items-center gap-2 h-9 px-3 text-muted font-medium rounded-btn transition hover:bg-surface hover:text-foreground">
+    More
+  </button>
+
+Input:
+  <input class="h-input w-full px-3 bg-surface border border-border rounded-btn text-foreground placeholder:text-muted transition focus:border-primary focus:shadow-focus outline-none" placeholder="Search..." />
+
+Badge (solid):
+  <span class="inline-flex items-center px-2.5 py-0.5 bg-primary text-white text-xs font-semibold rounded-pill">New</span>
+
+Badge (soft success):
+  <span class="inline-flex items-center px-2.5 py-0.5 bg-success-soft text-success text-xs font-semibold rounded-pill">Active</span>
+
+Avatar:
+  <img src="https://i.pravatar.cc/80?u=ada" class="w-10 h-10 rounded-full object-cover" alt="Ada Chen" />
+
+Top nav:
+  <header class="flex items-center h-nav px-6 bg-surface border-b border-border gap-2 sticky top-0 z-10">...</header>
+
+Bottom tab bar (mobile):
+  <nav class="fixed bottom-0 left-0 right-0 flex items-center justify-around h-nav bg-surface border-t border-border">
+    <a class="flex flex-col items-center gap-0.5 flex-1 text-xs text-muted hover:text-foreground [&.active]:text-primary [&.active]:font-semibold active">
+      <i class="iconoir-home text-[22px]"></i><span>Home</span>
+    </a>
+    ...
+  </nav>
+
+Sidebar nav:
+  <aside class="w-64 shrink-0 flex flex-col bg-surface border-r border-border py-5">
+    <a class="flex items-center gap-3 px-5 py-2.5 text-[15px] text-muted transition hover:bg-background hover:text-foreground [&.active]:text-primary [&.active]:bg-primary-soft [&.active]:font-semibold">
+      <i class="iconoir-dashboard-dots text-[20px]"></i>Dashboard
+    </a>
+    ...
+  </aside>
+
+Divider:
+  <div class="h-px bg-border my-4 w-full"></div>
+
+Status dot:
+  <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+
+TYPOGRAPHY — use Tailwind utilities directly (NOT ds-* classes):
+  Page title:      class="text-4xl font-bold tracking-tight text-foreground"  (mobile: text-3xl)
+  Section heading: class="text-2xl font-semibold tracking-tight text-foreground"
+  Card title:      class="text-lg font-semibold text-foreground"
+  Body:            class="text-base text-foreground leading-relaxed"
+  Caption:         class="text-sm text-muted"
+  Small:           class="text-xs text-muted"
+  ABSOLUTE MIN on mobile: 12px (text-xs). ABSOLUTE MIN on web: 13px.
+
+ICONS — MANDATORY Iconoir (never emoji):
+  <i class="iconoir-home text-[20px]"></i>
+  Common: iconoir-home, iconoir-search, iconoir-settings, iconoir-user, iconoir-plus, iconoir-edit,
+  iconoir-trash, iconoir-heart, iconoir-star, iconoir-bell, iconoir-mail, iconoir-calendar,
+  iconoir-clock, iconoir-check, iconoir-arrow-right, iconoir-arrow-left, iconoir-dashboard-dots,
+  iconoir-graph-up, iconoir-wallet, iconoir-credit-card, iconoir-shopping-bag, iconoir-chat-bubble,
+  iconoir-image, iconoir-folder, iconoir-lock, iconoir-log-out, iconoir-menu, iconoir-filter,
+  iconoir-more-horiz, iconoir-more-vert, iconoir-download, iconoir-upload, iconoir-share-android,
+  iconoir-music-double-note, iconoir-play, iconoir-pause, iconoir-shuffle, iconoir-skip-next.
+
+IMAGES — use real Unsplash URLs, not placeholders:
+  Product/album/food: <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop" class="w-full aspect-square object-cover rounded-card" />
+  Avatars: <img src="https://i.pravatar.cc/80?u=unique-name" class="w-10 h-10 rounded-full" />
+
+FORBIDDEN (these make the output unusable):
+  - ds-card / ds-btn-primary / ds-input etc. (OLD opaque classes — DO NOT emit)
+  - bg-white / bg-black / bg-gray-* / bg-blue-* etc. (HARDCODED colors — always use semantic tokens)
+  - Inline style="background:..." (always use Tailwind utilities)
+  - Custom <style> blocks that redefine component look (breaks the design system)
+  - Lorem ipsum content (use realistic names, numbers, dates)
+`;
 
 // ── Agents (lazy-initialized with skill) ──────────────────────
 
@@ -110,7 +261,7 @@ async function getDesignSystemAgent(): Promise<LlmAgent> {
     const skillInstr = await getSkillInstructions();
     _designSystemAgent = new LlmAgent({
       name: "design_system_agent",
-      model: MODEL,
+      model: PLANNING_MODEL,
       instruction: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
 
 Before choosing colors/fonts, think about:
@@ -122,7 +273,7 @@ TYPOGRAPHY RULES:
 - NEVER use Inter, Roboto, Arial, system-ui, or other overused fonts
 - Choose distinctive Google Fonts that match the aesthetic. Examples by tone:
   - Editorial/luxury: "Playfair Display", "Cormorant Garamond", "Libre Baskerville"
-  - Modern/geometric: "Outfit", "Sora", "General Sans", "Satoshi" (via CDN), "Plus Jakarta Sans"
+  - Modern/geometric: "Outfit", "Sora", "General Sans", "Plus Jakarta Sans"
   - Playful: "Fredoka", "Quicksand", "Baloo 2"
   - Technical/mono: "JetBrains Mono", "IBM Plex Mono", "Fira Code"
   - Brutalist: "Bebas Neue", "Anton", "Archivo Black"
@@ -131,23 +282,23 @@ TYPOGRAPHY RULES:
 COLOR RULES:
 - NEVER use generic purple-gradient-on-white or blue-gray corporate palettes
 - Commit to a palette with PERSONALITY: warm terracotta, deep forest green, bold coral, midnight navy, sage + gold, etc.
-- Background should set atmosphere — consider off-whites, warm grays, light tints, or dark themes
+- Background should set atmosphere — off-whites, warm grays, light tints, or dark themes
 - Every color must feel intentional and cohesive
+- Use HEX format (#RRGGBB) for all colors — no rgba, no hsl
 
 LAYOUT TOKEN RULES:
-- Choose a border-radius philosophy: sharp (4-6px), standard (10-14px), rounded (16-24px), or pill (999px for buttons)
-- Pick ONE shadow style: flat (0 0 0 transparent), subtle (0 1px 3px rgba(0,0,0,0.06)), elevated (0 4px 12px rgba(0,0,0,0.1)), dramatic (0 8px 24px rgba(0,0,0,0.15))
-- Choose navigation: "sidebar" for dashboards/tools, "topbar" for marketing/content sites, "bottom-tabs" for mobile apps, "none" for simple pages
-- Tokens must feel cohesive: sharp radius + flat shadow = minimalist; rounded radius + soft shadow = friendly; etc.
+- Border-radius philosophy: sharp (4-6px), standard (10-14px), rounded (16-24px), or pill-first (999px on buttons only)
+- ONE shadow style: flat (0 0 0 transparent), subtle (0 1px 3px rgba(0,0,0,0.06)), elevated (0 4px 12px rgba(0,0,0,0.1)), dramatic (0 8px 24px rgba(0,0,0,0.15))
+- Navigation: "sidebar" for dashboards/tools, "topbar" for marketing/content sites, "bottom-tabs" for mobile apps, "none" for simple pages
 - Button height: 40-44px for compact, 48-52px for standard mobile, 56px for spacious
 - All values must be concrete CSS values (e.g. "12px", "0 1px 3px rgba(0,0,0,0.06)")
 
-=== DESIGN SKILL (apply these principles when choosing colors, fonts, and aesthetic direction) ===
+=== DESIGN SKILL ===
 ${skillInstr}
 
 Return valid JSON matching the required schema. No markdown, no explanation.`,
       outputSchema: DesignPlanSchema,
-      generateContentConfig: { maxOutputTokens: 4096 },
+      generateContentConfig: { maxOutputTokens: 4096, temperature: 0.7 },
     });
   }
   return _designSystemAgent;
@@ -155,7 +306,7 @@ Return valid JSON matching the required schema. No markdown, no explanation.`,
 
 const chatPlannerAgent = new LlmAgent({
   name: "chat_planner_agent",
-  model: MODEL,
+  model: PLANNING_MODEL,
   instruction: `You are an AI assistant for a wireframe design tool.
 Given an app's screens and a user request, determine the action to take: edit existing screens or create a new one.
 
@@ -178,7 +329,6 @@ Examples of multi-screen requests:
 - "Make all buttons rounded" → ALL (affects buttons on every screen)
 - "Change the nav background across all pages" → ALL
 - "Use a darker background everywhere" → ALL
-- "Update the header on every screen" → ALL
 
 Examples of single-screen requests:
 - "Add a search bar to the dashboard" → specific screen ID
@@ -189,7 +339,63 @@ When in doubt and the request mentions "all", "every", "across", "everywhere", o
 Otherwise, use the exact screen ID from the provided list.
 Return valid JSON matching the required schema.`,
   outputSchema: ChatPlanSchema,
-  generateContentConfig: { maxOutputTokens: 1024, temperature: 0.3 },
+  generateContentConfig: { maxOutputTokens: 1024, temperature: 0.2 },
+});
+
+const patchAgent = new LlmAgent({
+  name: "patch_agent",
+  model: PLANNING_MODEL,
+  instruction: `You produce surgical patch operations on HTML documents.
+
+Given the current HTML and a change description, output the MINIMUM search/replace operations to achieve the change.
+
+CRITICAL RULES:
+1. Each "search" string is an exact substring of the current HTML — copy it verbatim.
+2. Each "search" string must be UNIQUE in the document (appears exactly ONCE). Add surrounding context if needed.
+3. Operations are applied SEQUENTIALLY — later operations see the result of earlier ones.
+4. Keep operations MINIMAL. Don't rewrite a whole <div> when swapping two class names works.
+5. For ADDING elements: search for a nearby landmark (closing tag of a parent) and replace it with new content + that landmark.
+6. For DELETING elements: set "replace" to empty string.
+7. Prefer CLASS-SWAP operations for style changes. Example: to change a button's color, replace just the class attribute, not the whole button.
+8. When changing text content, include the surrounding HTML tags in the search to ensure uniqueness.
+9. ICONS: Use Iconoir classes (<i class="iconoir-icon-name"></i>). NEVER emoji or unicode icons.
+10. COLORS: Use semantic Tailwind tokens — bg-primary, text-foreground, border-border. NEVER hardcoded bg-blue-500 etc.
+11. Preserve the existing Tailwind class patterns used elsewhere in the document.
+
+Return valid JSON matching the required schema. No markdown, no explanation.`,
+  outputSchema: PatchOpsSchema,
+  generateContentConfig: { maxOutputTokens: 4096, temperature: 0.1 },
+});
+
+const criticAgent = new LlmAgent({
+  name: "critic_agent",
+  model: CRITIC_MODEL,
+  instruction: `You are a senior product designer reviewing a generated UI screen against a strict rubric.
+
+Rate 0-10 on:
+- Visual hierarchy (ONE primary focus, supporting elements subordinate)
+- Content realism (real names/numbers/dates, NOT lorem ipsum or "User 1", "$XX.XX")
+- Density (enough content — e.g. 8+ products on a store screen, 15+ songs on a music home)
+- Typography (proper size scale, no tiny text, readable line-heights)
+- Icon usage (Iconoir icons throughout, ZERO emoji)
+- Consistency (uses Tailwind semantic tokens: bg-primary, text-foreground, rounded-card — no hardcoded bg-blue-500, no ds-* classes)
+
+CRITICAL FAILURES (auto-fail, score ≤ 4):
+- Contains lorem ipsum, "Name Here", "User 1", "$XX.XX", or obvious placeholders
+- Uses emoji instead of Iconoir icons
+- Uses hardcoded Tailwind colors (bg-blue-500, text-red-600) instead of semantic tokens
+- Uses ds-* classes (ds-card, ds-btn-primary) — these are forbidden
+- Completely empty sections (<div></div> with no content)
+- Text smaller than 12px
+- Severely misaligned layout (e.g. overlapping elements)
+
+passes = true iff score >= 7 AND no critical failures.
+
+If passes=false, write a concise refineInstruction (1-3 sentences) telling the generator exactly what to fix.
+
+Return valid JSON matching the required schema.`,
+  outputSchema: CritiqueSchema,
+  generateContentConfig: { maxOutputTokens: 1024, temperature: 0.2 },
 });
 
 let _screenEditorInstr: string | null = null;
@@ -198,16 +404,16 @@ async function getScreenEditorInstructions(): Promise<string> {
     const skillInstr = await getSkillInstructions();
     _screenEditorInstr = `You are an expert frontend editor. You modify HTML screens with surgical precision while maintaining design excellence.
 
+${TAILWIND_COMPONENT_GUIDE}
+
 EDITING RULES:
 - Make ONLY the requested changes — preserve all other content, structure, and styling exactly
-- Maintain the existing design language: same fonts, colors, spacing, border-radius, shadow system
-- Any new elements you add must match the existing component patterns (same button styles, card styles, etc.)
+- Maintain the existing design language: same fonts, Tailwind semantic tokens, spacing, radius
+- Any new elements you add must match the existing component patterns (same button/card class stacks)
 - Keep CSS variables for colors — never replace var(--color-*) with hardcoded values
-- Keep all ds-* CSS classes intact — they define the design system component styles
-- If adding new sections, match the spacing rhythm of surrounding content
+- Use the Tailwind semantic tokens above (bg-primary, text-foreground, rounded-card, shadow-card, h-btn, etc.) — NEVER opaque ds-* classes or raw colors like bg-blue-500
 - Preserve all hover states, transitions, and visual refinements
-- If the screen uses ds-card, ds-btn-primary, ds-input, ds-avatar etc., use those same classes for new elements
-- ICONS: ALWAYS use Iconoir classes (<i class="iconoir-icon-name"></i>). NEVER use emoji or unicode for icons. Replace any existing emoji icons with Iconoir equivalents.
+- ICONS: ALWAYS use Iconoir classes. NEVER emoji or unicode.
 
 === DESIGN SKILL ===
 ${skillInstr}
@@ -215,55 +421,6 @@ ${skillInstr}
 Output ONLY the complete modified HTML starting with <!DOCTYPE html>. No markdown, no explanation.`;
   }
   return _screenEditorInstr;
-}
-
-const fastApplyAgent = new LlmAgent({
-  name: "fast_apply_agent",
-  model: MODEL,
-  instruction: `You are an expert HTML editor that produces surgical search/replace operations.
-
-Given the current HTML of a screen and a description of changes to make, output a list of search/replace operations.
-
-CRITICAL RULES:
-1. Each "search" string must be an EXACT verbatim substring of the current HTML — copy it character-for-character including whitespace, quotes, and newlines.
-2. Each "search" string must be UNIQUE in the document — it should appear exactly ONCE. Include enough surrounding context (parent tags, attributes) to ensure uniqueness.
-3. Keep operations MINIMAL — only change what's needed. Don't rewrite large blocks when a small targeted change works.
-4. Operations are applied SEQUENTIALLY — later operations see the result of earlier ones. Plan accordingly.
-5. Maintain the same indentation style as the surrounding HTML.
-6. For ADDING new elements: search for a nearby landmark (e.g. a closing tag) and replace it with the new content PLUS that landmark.
-7. For DELETING elements: set "replace" to an empty string.
-8. Preserve all ds-* CSS classes, CSS variables (var(--color-*)), and design system patterns.
-9. When changing text content, include the surrounding HTML tags in the search to ensure uniqueness.
-10. Keep each search string as SHORT as possible while guaranteeing uniqueness.
-11. ICONS: Use Iconoir classes (<i class="iconoir-icon-name"></i>) for any new icons. NEVER add emoji or unicode symbols as icons.
-
-Return valid JSON matching the required schema. No markdown, no explanation.`,
-  outputSchema: FastApplyResultSchema,
-  generateContentConfig: { maxOutputTokens: 4096, temperature: 0.2 },
-});
-
-/** Apply search/replace operations to HTML. Returns result with stats. */
-function applyOperations(html: string, operations: FastApplyResult["operations"]): {
-  html: string;
-  applied: number;
-  failed: string[];
-} {
-  let current = html;
-  let applied = 0;
-  const failed: string[] = [];
-
-  for (const op of operations) {
-    const idx = current.indexOf(op.search);
-    if (idx === -1) {
-      failed.push(op.description);
-      continue;
-    }
-    // Replace only the first occurrence using indexOf + slice (avoids regex issues)
-    current = current.slice(0, idx) + op.replace + current.slice(idx + op.search.length);
-    applied++;
-  }
-
-  return { html: current, applied, failed };
 }
 
 let _screenGenInstructions: string | null = null;
@@ -275,63 +432,30 @@ You generate complete, self-contained HTML that looks like REAL shipped products
 
 QUALITY BAR: Think Apple Music, Spotify, Stripe Dashboard, Linear, Notion, Nike App. Every screen must look like it was designed by a senior designer at a top company. If it looks like a template or wireframe, you have FAILED.
 
+${TAILWIND_COMPONENT_GUIDE}
+
 VISUAL RICHNESS — MANDATORY:
-- Use real images from Unsplash: <img src="https://images.unsplash.com/photo-XXXXX?w=400&h=400&fit=crop" />. Pick specific photos that match the content (album art, food, products, avatars, landscapes). NEVER use colored rectangles, gradient circles, or placeholder shapes.
-- For album art, product images, hero photos: use REAL Unsplash images with descriptive query URLs like https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=300&h=300&fit=crop for music, https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&h=300&fit=crop for food, etc.
-- For user avatars: use https://i.pravatar.cc/80?u=uniquename for realistic face photos
-- Backgrounds: use subtle CSS gradients, layered colors, or blurred image backgrounds for hero sections
-- Cards should have depth: proper shadows, border-radius, hover states, and visual hierarchy
-- Use CSS gradients for decorative elements ONLY when appropriate (e.g. music visualizer, gradient mesh backgrounds)
+- Use real images from Unsplash with specific photo URLs matching content (album art, food, products, landscapes). NEVER colored rectangles or placeholder shapes.
+- Real avatars: https://i.pravatar.cc/80?u=unique-name
+- Cards need depth — proper shadow-card, rounded-card, hover states, clear hierarchy
+- Decorative gradients (via bg-gradient-to-br from-primary to-secondary) ONLY when aesthetically purposeful
 
 LAYOUT EXCELLENCE:
-- Every screen needs a clear visual hierarchy — ONE primary focus element, supporting elements subordinate
-- Use negative space generously — cramped layouts look cheap
-- Align elements to a grid — consistent gutters, aligned edges
-- Mobile screens: full-width edge-to-edge content, proper safe areas, bottom nav with proper spacing
-- Web screens: max-width containers, sidebar + content layouts, proper responsive structure
+- Every screen needs clear visual hierarchy — ONE primary focus element
+- Generous negative space — cramped layouts look cheap
+- Align to grid — consistent gutters (Tailwind gap-4, gap-6, gap-8)
+- Mobile: full-width edge-to-edge, safe areas, bottom nav with pb-20 on content
+- Web: max-width containers (max-w-6xl, max-w-7xl), sidebar + content layouts
 
-COMPONENT CLASSES (use these from the shared stylesheet):
-- ds-card, ds-card-lg for containers | ds-btn-primary, ds-btn-secondary for buttons
-- ds-input for inputs | ds-avatar, ds-avatar-lg for avatars
-- ds-badge, ds-badge-secondary, ds-badge-success, ds-badge-error for badges
-- ds-nav / ds-nav-bottom + ds-nav-item for navigation
-- ds-sidebar + ds-sidebar-item for sidebar navigation
-- ds-title, ds-heading, ds-subheading, ds-body, ds-caption, ds-small for typography
-- ds-section for spacing | ds-divider for separators
-- Combine ds-* with Tailwind: flex, grid, gap-*, p-*, m-*, w-*, rounded-*, bg-*, text-*, etc.
-- DO NOT override ds-* properties with custom CSS. The shared stylesheet handles consistency.
-
-CONTENT — REALISTIC AND RICH:
-- ALL content must be REALISTIC: real names, real numbers, real dates. ZERO Lorem ipsum.
-- Fill screens with DENSITY — a music home screen needs 15+ songs, an e-commerce screen needs 8+ products
-- Use real artist names, real song titles, real product names, real city names
-- Numbers should be plausible: "$4,280.50", "847 followers", "4.8★ (2.3k)"
-- Dates should be specific: "Mar 15, 2026" not "Date"
-- NEVER let text render in default serif — the shared CSS sets fonts on body.
-
-ICONS — MANDATORY:
-- Use Iconoir CSS library: <i class="iconoir-icon-name"></i>
-- NEVER use emoji or unicode symbols. Always use Iconoir classes.
-- Common: iconoir-home, iconoir-search, iconoir-settings, iconoir-user, iconoir-plus, iconoir-edit, iconoir-trash,
-  iconoir-heart, iconoir-star, iconoir-bell, iconoir-mail, iconoir-calendar, iconoir-clock, iconoir-check,
-  iconoir-arrow-right, iconoir-arrow-left, iconoir-nav-arrow-down, iconoir-nav-arrow-up,
-  iconoir-dashboard-dots, iconoir-graph-up, iconoir-wallet, iconoir-credit-card, iconoir-shopping-bag,
-  iconoir-chat-bubble, iconoir-image, iconoir-folder, iconoir-lock, iconoir-log-out, iconoir-menu,
-  iconoir-more-horiz, iconoir-more-vert, iconoir-filter, iconoir-sort, iconoir-download, iconoir-upload,
-  iconoir-share-android, iconoir-link, iconoir-map-pin, iconoir-phone, iconoir-globe, iconoir-sun-light,
-  iconoir-half-moon, iconoir-play, iconoir-pause, iconoir-music-double-note, iconoir-headset,
-  iconoir-people-tag, iconoir-group, iconoir-trophy, iconoir-flash, iconoir-rocket,
-  iconoir-shuffle, iconoir-skip-next, iconoir-skip-prev, iconoir-repeat, iconoir-sound-high,
-  iconoir-shield-check, iconoir-warning-triangle, iconoir-check-circle, iconoir-list, iconoir-grid
-- Nav items: <a class="ds-nav-item"><i class="iconoir-home"></i><span>Home</span></a>
-- Buttons: <button class="ds-btn-primary"><i class="iconoir-plus"></i> Add Item</button>
-- Sizes: ds-icon (20px default), ds-icon-sm (16px), ds-icon-lg (24px)
+CONTENT — REALISTIC AND DENSE:
+- Real names (Sarah Chen, Marcus Williams, Ada Patel), real numbers ($4,280.50), real dates (Mar 15, 2026)
+- ZERO Lorem ipsum, "User 1", "$XX.XX", or placeholder text
+- Music home needs 15+ songs; e-commerce needs 8+ products; dashboard needs real metrics
 
 DESIGN CONSISTENCY:
 - Every screen MUST look like it belongs to the same product
-- Same card style, same button style, same nav pattern, same typography
-- If a reference screen is provided, match its exact visual patterns
-- If a reference screen is provided, match its exact visual patterns
+- Same Tailwind class patterns for nav, cards, buttons, typography
+- If a reference screen is provided, MATCH its class patterns character-by-character
 
 Output ONLY raw HTML starting with <!DOCTYPE html>. No markdown.
 
@@ -402,24 +526,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
   throw new Error("unreachable");
 }
 
-function stripFences(text: string): string {
-  return text
-    .replace(/^```(?:json|html)?\s*\n?/gm, "")
-    .replace(/\n?```\s*$/gm, "")
-    .trim();
-}
-
-/** Extract JSON object from potentially noisy LLM output */
-function extractJson(text: string): string {
-  const cleaned = stripFences(text);
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("No JSON object found in response");
-  }
-  return cleaned.slice(start, end + 1);
-}
-
 // ── Public API ────────────────────────────────────────────────
 
 export async function generateDesignSystem(
@@ -433,7 +539,7 @@ SCREEN PLANNING RULES:
 - Analyze the app description and plan ONLY the screens that make sense for THIS specific app
 - A simple utility might need 3-4 screens, a full SaaS product might need 6-8, a landing page might need just 1-2
 - Each screen must have a clear, distinct purpose — no filler screens
-- Name screens descriptively (e.g. "Transaction History", "Workout Tracker", "Chat Inbox") — not generic ("Screen 1", "Core Feature")
+- Name screens descriptively (e.g. "Transaction History", "Workout Tracker", "Chat Inbox")
 
 PLATFORM DETECTION:
 - If the description mentions "mobile app", "iOS", "Android", "phone", "React Native", "Flutter" → platform: "mobile"
@@ -441,14 +547,13 @@ PLATFORM DETECTION:
 - Otherwise → platform: "web"
 - The platform affects viewport size: mobile=390×844, tablet=1024×768, web=1440×900
 
-LAYOUT TOKENS:
-- Include a "layout" object in the designSystem with these exact fields:
-  borderRadius, borderRadiusLg, borderRadiusSm, shadow, shadowLg, spacingUnit, cardPadding, sectionGap, buttonHeight, inputHeight, navStyle, navHeight
-- These tokens will be used to generate a shared CSS stylesheet for ALL screens, ensuring visual consistency
-- Choose values that match the app's aesthetic direction
+LAYOUT TOKENS (required, under designSystem.layout):
+- borderRadius, borderRadiusLg, borderRadiusSm, shadow, shadowLg, spacingUnit, cardPadding, sectionGap, buttonHeight, inputHeight, navStyle, navHeight
+- These become Tailwind utilities (rounded-card, shadow-card, h-btn, p-card, h-nav) used throughout every screen
+- Choose values that match the app's aesthetic
 
-Pick a distinctive, on-brand color palette for the domain.
-Use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-serif".`;
+COLOR VALUES: use HEX format only (#RRGGBB). No rgba(), no hsl().
+FONTS: use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-serif".`;
 
   return withRetry(async () => {
     const dsAgent = await getDesignSystemAgent();
@@ -456,7 +561,7 @@ Use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-serif".`
     let json: unknown;
     try {
       json = JSON.parse(extractJson(raw));
-    } catch (e) {
+    } catch {
       console.error("Failed to parse design plan JSON:", raw.slice(0, 500));
       throw new Error("Design system returned invalid JSON — retrying");
     }
@@ -469,6 +574,12 @@ Use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-serif".`
   });
 }
 
+/**
+ * Generate a screen. Uses streaming for live iframe rendering.
+ * Post-processes with HTML validation + repair before returning.
+ *
+ * Optionally runs a critique/refine pass if enableCritique=true.
+ */
 export async function generateScreenHtml(
   screenId: string,
   screenName: string,
@@ -478,78 +589,42 @@ export async function generateScreenHtml(
   designSystem: DesignSystem,
   platform: Platform = "web",
   onHtmlChunk?: (screenId: string, chunk: string) => void,
-  referenceScreenHtml?: string
+  referenceScreensHtml?: string | string[],
+  enableCritique = true
 ): Promise<string> {
-  const { colors, fonts } = designSystem;
   const vp = VIEWPORTS[platform];
-
-  // Generate the shared head template with all ds-* classes
   const headTemplate = generateHtmlHead(designSystem, platform);
 
-  // Build reference context if we have a previously generated screen
-  const referenceCtx = referenceScreenHtml
-    ? `\n\nREFERENCE SCREEN (your screen MUST match this exact visual style — same component classes, same layout patterns, same spacing):
-<reference>
-${extractReferencePatterns(referenceScreenHtml)}
-</reference>
-Match the reference screen's: navigation structure, card style, button style, typography, spacing rhythm, color usage. Your screen must look like it belongs in the SAME app.`
-    : "";
+  // Build reference context. Accepts either a single HTML string (legacy) or an array
+  // for multi-screen consistency.
+  const refHtmls = Array.isArray(referenceScreensHtml)
+    ? referenceScreensHtml.filter(Boolean)
+    : referenceScreensHtml
+      ? [referenceScreensHtml]
+      : [];
+  const referenceCtx = refHtmls.length > 1
+    ? `\n\n${extractMultiScreenPatterns(refHtmls, designSystem)}\n`
+    : refHtmls.length === 1
+      ? `\n\n${extractReferencePatterns(refHtmls[0])}\n`
+      : "";
 
   const platformGuidance = platform === "mobile"
-    ? `MOBILE DESIGN (${vp.w}×${vp.h} — iPhone 14):
-
-⚠️ FONT SIZE IS THE #1 PRIORITY — tiny text is the most common failure. ENFORCE these minimums:
-
-TYPOGRAPHY (use ds-* classes: ds-title, ds-heading, ds-subheading, ds-body, ds-caption, ds-small):
-  - Page titles: use class="ds-title" (30px, weight 700)
-  - Section headings: use class="ds-heading" (22px, weight 600)
-  - Card titles: use class="ds-subheading" (18px, weight 600)
-  - Body text: use class="ds-body" (16px, weight 400, line-height 1.55)
-  - Secondary text: use class="ds-caption" (14px, muted color)
-  - Tab bar / small labels: use class="ds-small" (12px)
-  - ABSOLUTE MINIMUM for ANY visible text: 12px. Nothing smaller. Ever.
-
-LAYOUT RULES:
-  - Single column, full-width cards (use class="ds-card"), generous padding (20-24px)
-  - Touch targets: minimum 48px height for buttons
-  - Bottom tab bar: use class="ds-nav-bottom" with ds-nav-item children
-  - Sticky top header: use class="ds-nav"
-  - Buttons: use class="ds-btn-primary" or "ds-btn-secondary"
-  - Inputs: use class="ds-input"
-  - Avatars: use class="ds-avatar" or "ds-avatar-lg"
-  - Spacing rhythm: 8/12/16/20/24/32px — be generous`
+    ? `MOBILE (${vp.w}×${vp.h} — iPhone 14):
+  - Single column, full-width content, generous padding
+  - Touch targets: buttons ≥ 48px (use h-btn which is already sized for mobile)
+  - Bottom tab bar fixed, main content has pb-20 to clear it
+  - Page titles: text-3xl font-bold tracking-tight
+  - Min text size: 12px (text-xs). Body: 16px (text-base).`
     : platform === "tablet"
-      ? `TABLET DESIGN (${vp.w}×${vp.h} — iPad):
-
-TYPOGRAPHY (use ds-* classes for consistency):
-  - Page titles: class="ds-title" (34px)
-  - Section headings: class="ds-heading" (24px)
-  - Body text: class="ds-body" (16px)
-  - Captions: class="ds-caption" (14px)
-
-LAYOUT RULES:
-  - Use class="ds-sidebar" + ds-sidebar-item for sidebar navigation, or ds-nav for top bar
-  - Split-view patterns: sidebar + main content
-  - Touch-friendly: minimum 44px tap targets
-  - Cards: use class="ds-card" — consistent padding and radius handled by CSS`
-      : `WEB DESIGN (${vp.w}×${vp.h} — Desktop):
-
-⚠️ FONT SIZE IS THE #1 PRIORITY — tiny text is the most common failure. ENFORCE these minimums:
-
-TYPOGRAPHY (use ds-* classes for consistency):
-  - Page titles: class="ds-title" (40px, weight 700)
-  - Section headings: class="ds-heading" (26px, weight 600)
-  - Card titles: class="ds-subheading" (19px, weight 600)
-  - Body text: class="ds-body" (16px, line-height 1.6)
-  - Captions: class="ds-caption" (14px, muted)
-  - ABSOLUTE MINIMUM for ANY visible text: 13px.
-
-LAYOUT RULES:
-  - Use class="ds-sidebar" + ds-sidebar-item for sidebar navigation, or class="ds-nav" for top bar
-  - Content max-width: 1200px centered, or sidebar+content fill
-  - Cards: use class="ds-card" — consistent radius, padding, shadow from CSS
-  - Buttons: class="ds-btn-primary" / "ds-btn-secondary"
-  - Inputs: class="ds-input"
+      ? `TABLET (${vp.w}×${vp.h} — iPad):
+  - Split-view: sidebar (w-64 or w-72) + main content
+  - Touch targets ≥ 44px
+  - Page titles: text-3xl font-bold
+  - Body: text-base`
+      : `WEB (${vp.w}×${vp.h} — Desktop):
+  - Sidebar + content layout OR top nav + centered max-width container (max-w-6xl)
+  - Page titles: text-4xl font-bold tracking-tight
+  - Cards in grids: grid-cols-2/3/4 with gap-6 or gap-8
   - Hover states on ALL interactive elements`;
 
   const prompt = `Generate a complete, self-contained HTML document for the "${screenName}" screen of "${appName}".
@@ -558,71 +633,68 @@ Screen purpose: ${screenDescription}
 App context: ${appDescription}
 Platform: ${platform} (${vp.w}×${vp.h})
 
-TECHNICAL REQUIREMENTS:
-1. Use this EXACT <head> section (copy it verbatim — it contains the shared design system CSS):
+1. Use this EXACT <head> section verbatim — it loads Tailwind, the semantic tokens, fonts, and Iconoir:
 ${headTemplate}
 
-2. After </head>, add <body> with your screen content. Do NOT add additional <style> blocks that override ds-* classes.
+2. After </head>, add <body class="..."> and your screen content. The <body> should use Tailwind utilities like "min-h-screen bg-background text-foreground font-sans".
 
-3. Use these pre-built component classes for ALL components:
-   - Cards/panels: class="ds-card" or "ds-card-lg"
-   - Buttons: class="ds-btn-primary" or "ds-btn-secondary"
-   - Inputs: class="ds-input"
-   - Badges: class="ds-badge", "ds-badge-secondary", "ds-badge-success", "ds-badge-error"
-   - Avatars: class="ds-avatar" or "ds-avatar-lg" (add inline background-color for each)
-   - Navigation: class="ds-nav" (top) or "ds-nav-bottom" (mobile bottom tab bar) with ds-nav-item children
-   - Sidebar: class="ds-sidebar" with ds-sidebar-item children (add class="active" for current)
-   - Typography: class="ds-title", "ds-heading", "ds-subheading", "ds-body", "ds-caption", "ds-small"
-   - Sections: class="ds-section" for spacing between major blocks
-   - Dividers: <div class="ds-divider"></div>
-   - Status dots: <span class="ds-dot ds-dot-success"></span>
+3. Use Tailwind semantic tokens for ALL styling — bg-primary, text-foreground, rounded-card, shadow-card, h-btn, p-card, etc. See the component patterns in the system instructions.
 
-4. Combine ds-* classes freely with Tailwind utilities for layout: flex, grid, gap-*, p-*, m-*, w-*, etc.
-   Example: <div class="ds-card flex items-center gap-4">
-
-5. DO NOT write custom CSS that redefines card, button, input, or navigation appearance.
-   The shared CSS handles all component styling for consistency across screens.
+4. Do NOT write custom <style> blocks that override component appearance. All style comes from Tailwind classes + the injected semantic tokens.
 
 ${platformGuidance}
 
-ICONS — MANDATORY (Iconoir library is loaded in <head>):
-- NEVER use emoji or unicode symbols for icons. ALWAYS use Iconoir CSS classes.
-- Syntax: <i class="iconoir-icon-name"></i>
-- Nav items: <a class="ds-nav-item"><i class="iconoir-home"></i><span>Home</span></a>
-- Sidebar: <a class="ds-sidebar-item"><i class="iconoir-dashboard-dots"></i><span>Dashboard</span></a>
-- Buttons with icon: <button class="ds-btn-primary"><i class="iconoir-plus"></i> Add</button>
-- Common: iconoir-home, iconoir-search, iconoir-settings, iconoir-user, iconoir-plus, iconoir-edit,
-  iconoir-trash, iconoir-heart, iconoir-star, iconoir-bell, iconoir-mail, iconoir-calendar,
-  iconoir-clock, iconoir-check, iconoir-arrow-right, iconoir-arrow-left, iconoir-dashboard-dots,
-  iconoir-graph-up, iconoir-wallet, iconoir-credit-card, iconoir-shopping-bag, iconoir-chat-bubble,
-  iconoir-image, iconoir-folder, iconoir-lock, iconoir-log-out, iconoir-menu, iconoir-filter,
-  iconoir-download, iconoir-upload, iconoir-share-android, iconoir-link, iconoir-map-pin,
-  iconoir-phone, iconoir-globe, iconoir-eye-empty, iconoir-bookmark, iconoir-send, iconoir-camera,
-  iconoir-people-tag, iconoir-group, iconoir-community, iconoir-trophy, iconoir-rocket,
-  iconoir-shield-check, iconoir-warning-triangle, iconoir-info-circle, iconoir-check-circle,
-  iconoir-list, iconoir-grid, iconoir-more-horiz, iconoir-more-vert, iconoir-nav-arrow-down
-
-PROFESSIONAL DESIGN QUALITY (non-negotiable):
-- REALISTIC content: real names (Sarah Chen, Marcus Williams), real numbers ($12,450.00), real dates (Mar 5, 2026). ZERO Lorem ipsum.
-- STRONG visual hierarchy: ds-title for page titles, ds-heading for sections, ds-body for content
-- Use var(--color-primary) sparingly for CTAs and active states — don't overuse it
-- Surface (ds-card) must contrast with background
-- Navigation: active ds-nav-item gets class="active", ALL icons must be Iconoir (no emoji)
+CONTENT DENSITY (non-negotiable):
+- Fill screens with REAL content at realistic density
+- Use Iconoir icons (never emoji)
+- Real names (Sarah Chen, Marcus Williams, Ada Patel), prices ($4,280.50), dates (Mar 15, 2026)
 ${referenceCtx}
 
-Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences, no explanation.`;
+Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
   const sysInstr = await getScreenGenInstructions();
+  const html = await streamScreen(sysInstr, prompt, screenId, onHtmlChunk);
+  let finalHtml = injectSharedCSS(html, designSystem, platform);
+
+  if (enableCritique) {
+    finalHtml = await critiqueAndRefine(
+      finalHtml,
+      screenName,
+      screenDescription,
+      sysInstr,
+      designSystem,
+      platform,
+      screenId,
+      onHtmlChunk
+    );
+  }
+
+  return finalHtml;
+}
+
+/**
+ * Stream HTML generation and collect. Applies fence stripping on first chunk
+ * and validates/repairs the final output.
+ */
+async function streamScreen(
+  sysInstr: string,
+  prompt: string,
+  screenId: string,
+  onHtmlChunk?: (screenId: string, chunk: string) => void,
+  opts?: { image?: { data: string; mimeType: string }; maxTokens?: number }
+): Promise<string> {
   let fullHtml = "";
+  let isFirstChunk = true;
+
   for await (let chunk of streamWithGemini(sysInstr, prompt, {
-    model: MODEL,
+    model: STREAMING_MODEL,
     temperature: 0.7,
-    maxOutputTokens: 65536,
+    maxOutputTokens: opts?.maxTokens ?? 65536,
+    image: opts?.image,
   })) {
-    if (fullHtml === "" && chunk.startsWith("```html\n")) {
-      chunk = chunk.replace(/^```html\n/, "");
-    } else if (fullHtml === "" && chunk.startsWith("```\n")) {
-      chunk = chunk.replace(/^```\n/, "");
+    if (isFirstChunk) {
+      chunk = stripLeadingFence(chunk);
+      isFirstChunk = false;
     }
     fullHtml += chunk;
     try {
@@ -632,10 +704,86 @@ Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences, no expla
     }
   }
 
-  // Post-process: strip fences and ensure shared CSS is injected
-  let html = stripFences(fullHtml);
-  html = injectSharedCSS(html, designSystem, platform);
-  return html;
+  const { repaired, errors } = validateAndRepairHtml(fullHtml);
+  if (errors.length > 0) {
+    console.warn(`[${screenId}] HTML repaired:`, errors.join(", "));
+  }
+  return repaired;
+}
+
+/**
+ * Run a critique pass; if it fails, regenerate with fix instructions (once).
+ * Bounded cost: one extra critic call + optionally one extra generate call.
+ */
+async function critiqueAndRefine(
+  html: string,
+  screenName: string,
+  screenDescription: string,
+  sysInstr: string,
+  designSystem: DesignSystem,
+  platform: Platform,
+  screenId: string,
+  onHtmlChunk?: (screenId: string, chunk: string) => void
+): Promise<string> {
+  try {
+    const critique = await runCritique(html, screenName);
+    if (!critique || critique.passes) {
+      if (critique) {
+        console.log(`[${screenId}] critique passed (score: ${critique.score})`);
+      }
+      return html;
+    }
+
+    console.log(
+      `[${screenId}] critique failed (score: ${critique.score}): ${critique.issues.join("; ")}`
+    );
+
+    if (!critique.refineInstruction) return html;
+
+    const headTemplate = generateHtmlHead(designSystem, platform);
+    const refinePrompt = `Regenerate the "${screenName}" screen. The previous version had these issues:
+
+${critique.issues.map((i) => `- ${i}`).join("\n")}
+
+Fix instruction: ${critique.refineInstruction}
+
+Original screen purpose: ${screenDescription}
+
+Use this EXACT <head> section:
+${headTemplate}
+
+Output ONLY the complete fixed HTML starting with <!DOCTYPE html>. No markdown.`;
+
+    const refinedHtml = await streamScreen(sysInstr, refinePrompt, screenId, onHtmlChunk);
+    return injectSharedCSS(refinedHtml, designSystem, platform);
+  } catch (err) {
+    console.warn(`[${screenId}] critique/refine failed, keeping original:`, err);
+    return html;
+  }
+}
+
+async function runCritique(html: string, screenName: string): Promise<Critique | null> {
+  // Strip the <head> block so the critic only reviews body content — saves tokens
+  // and the head is template-generated anyway.
+  const bodyMatch = html.match(/<body[\s\S]*<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[0] : html;
+  const truncated = bodyHtml.length > 12000 ? bodyHtml.slice(0, 12000) + "\n...(truncated)" : bodyHtml;
+
+  const prompt = `Screen name: "${screenName}"
+
+Screen HTML (body):
+${truncated}
+
+Evaluate against the rubric. Return JSON.`;
+
+  try {
+    const raw = await collectAgent(criticAgent, "wirefraime-critique", prompt);
+    const parsed = CritiqueSchema.safeParse(JSON.parse(extractJson(raw)));
+    return parsed.success ? parsed.data : null;
+  } catch (e) {
+    console.warn("Critique call failed:", e);
+    return null;
+  }
 }
 
 // ── Chat editing ──────────────────────────────────────────────
@@ -655,7 +803,6 @@ export interface SelectedElementContext {
   textContent: string;
 }
 
-/** Parse a data URL into mime type and base64 data */
 function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
   const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
   if (!match) return null;
@@ -747,7 +894,6 @@ For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
       newScreenName,
     };
 
-    // Emit screen_start so the UI can set up the iframe for streaming
     yield {
       type: "screen_start",
       screenId: newScreenId,
@@ -756,12 +902,11 @@ For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
       total: 1,
     };
 
-    // Stream the new screen generation so UI updates live
     const referenceScreen = screens[0];
     const vp = VIEWPORTS[platform];
     const headTemplate = generateHtmlHead(designSystem, platform);
     const referenceCtx = referenceScreen?.html
-      ? `\n\nREFERENCE SCREEN (match this exact visual style):\n<reference>\n${extractReferencePatterns(referenceScreen.html)}\n</reference>`
+      ? `\n\n${extractReferencePatterns(referenceScreen.html)}\n\nMatch the existing screen's Tailwind class patterns exactly.`
       : "";
 
     const createPrompt = `Generate a complete, self-contained HTML document for the "${newScreenName}" screen of "${appName || "App"}".
@@ -770,35 +915,35 @@ Screen purpose: ${plan.changeDescription}
 App context: ${appDescription || ""}
 Platform: ${platform} (${vp.w}×${vp.h})
 
-TECHNICAL REQUIREMENTS:
-1. Use this EXACT <head> section:
+Use this EXACT <head> section:
 ${headTemplate}
 
-2. Use ds-* component classes (ds-card, ds-btn-primary, ds-btn-secondary, ds-input, ds-badge, ds-avatar, ds-nav, ds-sidebar, ds-title, ds-heading, ds-body, ds-caption, ds-section, ds-divider).
-3. Combine with Tailwind utilities for layout.
-4. ALL content must be REALISTIC — zero Lorem ipsum.
-5. ICONS: Use Iconoir CSS classes for ALL icons (<i class="iconoir-icon-name"></i>). NEVER use emoji or unicode symbols.
+Use Tailwind semantic tokens (bg-primary, text-foreground, rounded-card, shadow-card, h-btn, p-card). Never use ds-* classes, hardcoded colors like bg-blue-500, or emoji icons.
+
+Realistic content, real names/numbers/dates, Iconoir icons throughout.
 ${referenceCtx}
 
 Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
     const sysInstr = await getScreenGenInstructions();
     let fullHtml = "";
+    let isFirstChunk = true;
     for await (let chunk of streamWithGemini(sysInstr, createPrompt, {
-      model: MODEL,
+      model: STREAMING_MODEL,
       temperature: 0.7,
       maxOutputTokens: 65536,
     })) {
-      if (fullHtml === "" && chunk.startsWith("```html\n")) {
-        chunk = chunk.replace(/^```html\n/, "");
-      } else if (fullHtml === "" && chunk.startsWith("```\n")) {
-        chunk = chunk.replace(/^```\n/, "");
+      if (isFirstChunk) {
+        chunk = stripLeadingFence(chunk);
+        isFirstChunk = false;
       }
       fullHtml += chunk;
       yield { type: "html_chunk", screenId: newScreenId, chunk };
     }
 
-    const html = injectSharedCSS(stripFences(fullHtml), designSystem, platform);
+    const { repaired, errors } = validateAndRepairHtml(fullHtml);
+    if (errors.length > 0) console.warn(`[${newScreenId}] HTML repaired:`, errors.join(", "));
+    const html = injectSharedCSS(repaired, designSystem, platform);
 
     yield {
       type: "screen_created",
@@ -810,7 +955,7 @@ Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
     return;
   }
 
-  // ── Handle EDIT action (existing flow) ───────────────────
+  // ── Handle EDIT action ───────────────────────────────────
   const isMultiScreen = plan.targetScreenId === "ALL";
   const targetScreens = isMultiScreen
     ? screens
@@ -829,12 +974,9 @@ Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
   };
 
   // ── Phase 2: Apply changes to each target screen ────────
-  const sharedCSS = generateSharedCSS(designSystem, platform);
-
   for (let screenIdx = 0; screenIdx < targetScreens.length; screenIdx++) {
     const currentScreen = targetScreens[screenIdx];
 
-    // For multi-screen, emit a screen_start event so the UI can track progress
     if (isMultiScreen) {
       yield {
         type: "screen_start",
@@ -845,106 +987,117 @@ Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
       };
     }
 
-    // ── Fast Apply (surgical search/replace) ────────
-    const fastApplyPromptText = `Current HTML of "${currentScreen.name}":
+    // ── Try patch flow first ─────────────────────────
+    const patchPromptText = `Current HTML of "${currentScreen.name}":
 ${currentScreen.html}
 
-Design system: primary=${designSystem.colors.primary}, secondary=${designSystem.colors.secondary}, background=${designSystem.colors.background}, fonts: "${designSystem.fonts.primary}"
+Design system tokens available as Tailwind classes:
+  Colors: bg-primary, text-primary, bg-surface, text-foreground, text-muted, border-border, bg-success, bg-error
+  Radii: rounded-card, rounded-card-lg, rounded-btn, rounded-pill, rounded-full
+  Shadows: shadow-card, shadow-card-lg, shadow-focus
+  Heights: h-btn, h-input, h-nav
 
 Changes to make: ${plan.changeDescription}${imageCtx}
-${!isMultiScreen && selectedElement ? `\nTarget element: XPath="${selectedElement.xpath}", tag=<${selectedElement.tagName}>, text="${selectedElement.textContent || ""}".` : ""}
+${!isMultiScreen && selectedElement ? `\nTarget element: XPath="${selectedElement.xpath}", tag=<${selectedElement.tagName}>, text="${selectedElement.textContent || ""}".\nFocus patches on this element and its immediate context.` : ""}
 
-Produce the minimum search/replace operations to make these changes. Each search string must appear EXACTLY ONCE in the HTML above.`;
+Produce minimum patch operations. Each search string must appear EXACTLY ONCE in the HTML above. Prefer class-attribute swaps over full element rewrites.`;
 
-    const fastApplyMessage = parsedImage
-      ? multimodalMessage(fastApplyPromptText, parsedImage.data, parsedImage.mimeType)
-      : fastApplyPromptText;
+    const patchMessage = parsedImage
+      ? multimodalMessage(patchPromptText, parsedImage.data, parsedImage.mimeType)
+      : patchPromptText;
 
-    let fastApplySucceeded = false;
+    let patchSucceeded = false;
 
     try {
-      const fastApplyRaw = await withRetry(
-        () => collectAgent(fastApplyAgent, "wirefraime-fast-apply", fastApplyMessage),
-        1 // only 1 retry before falling back
+      const patchRaw = await withRetry(
+        () => collectAgent(patchAgent, "wirefraime-patch", patchMessage),
+        1
       );
 
-      const parsed = FastApplyResultSchema.safeParse(JSON.parse(extractJson(fastApplyRaw)));
-      if (!parsed.success) throw new Error("Invalid fast-apply schema");
+      const parsed = PatchOpsSchema.safeParse(JSON.parse(extractJson(patchRaw)));
+      if (!parsed.success) throw new Error("Invalid patch schema");
 
       const ops = parsed.data.operations;
       if (ops.length === 0) throw new Error("No operations returned");
 
-      const result = applyOperations(currentScreen.html, ops);
+      const result = applyPatchOps(currentScreen.html, ops);
 
-      // Stream each applied operation as a visible step
+      if (result.applied === 0) {
+        throw new Error("All patch operations failed to match");
+      }
+
+      // Emit success events for applied ops
       for (let i = 0; i < ops.length; i++) {
-        const didApply = !result.failed.includes(ops[i].description);
-        if (didApply) {
+        const op = ops[i];
+        const didFail = result.failed.some((f) => f.description === op.description);
+        if (!didFail) {
           yield {
             type: "apply_op",
             screenId: currentScreen.id,
             index: i + 1,
             total: ops.length,
-            description: ops[i].description,
+            description: op.description,
           };
         }
       }
 
-      // If ALL operations failed, fall back to full regen
-      if (result.applied === 0) {
-        throw new Error("All operations failed to match");
-      }
-
-      // Report partial failures
       if (result.failed.length > 0) {
-        yield { type: "apply_failed", screenId: currentScreen.id, failedOps: result.failed, fallback: false };
+        yield {
+          type: "apply_failed",
+          screenId: currentScreen.id,
+          failedOps: result.failed.map((f) => `${f.description}: ${f.reason}`),
+          fallback: false,
+        };
       }
 
-      // Post-process and emit final HTML
-      const html = injectSharedCSS(result.html, designSystem, platform);
+      const { repaired } = validateAndRepairHtml(result.html);
+      const html = injectSharedCSS(repaired, designSystem, platform);
       yield { type: "screen_done", screenId: currentScreen.id, html };
-      fastApplySucceeded = true;
+      patchSucceeded = true;
     } catch (err) {
-      console.warn(`Fast-apply failed for "${currentScreen.name}", falling back to full regen:`, err);
+      console.warn(`Patch flow failed for "${currentScreen.name}", falling back to regen:`, err);
     }
 
-    // ── Fallback: Full HTML regeneration (per screen) ──────
-    if (!fastApplySucceeded) {
+    // ── Fallback: full regen for this screen ──────────
+    if (!patchSucceeded) {
       yield { type: "apply_failed", screenId: currentScreen.id, failedOps: [], fallback: true };
 
-      const editPromptText = `You are editing the "${currentScreen.name}" screen of a wireframe app.
+      const editPromptText = `You are editing the "${currentScreen.name}" screen.
 
 Current HTML:
 ${currentScreen.html}
 
-Design system: primary=${designSystem.colors.primary}, secondary=${designSystem.colors.secondary}, background=${designSystem.colors.background}, surface=${designSystem.colors.surface}, text=${designSystem.colors.text}, textMuted=${designSystem.colors.textMuted}, border=${designSystem.colors.border}, fonts: primary="${designSystem.fonts.primary}"
+Available Tailwind semantic tokens (use these — never hardcode colors):
+  Colors: bg-primary, text-primary, bg-surface, text-foreground, text-muted, border-border, bg-success, bg-error
+  Radii: rounded-card, rounded-btn, rounded-pill, rounded-full
+  Shadows: shadow-card, shadow-card-lg
+  Heights: h-btn, h-input, h-nav
 
-DESIGN SYSTEM CSS CLASSES (preserve these — they ensure cross-screen consistency):
-The HTML uses ds-* classes: ds-card, ds-btn-primary, ds-btn-secondary, ds-input, ds-badge, ds-avatar, ds-nav, ds-nav-item, ds-sidebar, ds-sidebar-item, ds-title, ds-heading, ds-body, ds-caption, ds-section, ds-divider.
-When adding new elements, use the SAME ds-* classes. Do NOT write custom CSS overriding these classes.
-
-Shared CSS variables available:
-${sharedCSS.slice(0, 1500)}
-
-${!isMultiScreen && selectedElement ? `\nTarget element (user selected): XPath="${selectedElement.xpath}", tag=<${selectedElement.tagName}>, text="${selectedElement.textContent || ""}".\nFocus your changes on this element and its immediate context.\n` : ""}
+${!isMultiScreen && selectedElement ? `\nTarget element (user selected): XPath="${selectedElement.xpath}", tag=<${selectedElement.tagName}>, text="${selectedElement.textContent || ""}".\nFocus changes on this element and its immediate context.\n` : ""}
 Changes to make: ${plan.changeDescription}${imageCtx}
 
-Output the COMPLETE modified HTML. Preserve all unchanged parts exactly as-is.`;
+Output the COMPLETE modified HTML. Preserve all unchanged parts exactly.`;
 
       const editorInstr = await getScreenEditorInstructions();
       let fullHtml = "";
-      for await (const chunk of streamWithGemini(editorInstr, editPromptText, {
-        model: MODEL,
-        temperature: 0.5,
-        maxOutputTokens: 16384,
+      let isFirstChunk = true;
+      for await (let chunk of streamWithGemini(editorInstr, editPromptText, {
+        model: STREAMING_MODEL,
+        temperature: 0.4,
+        maxOutputTokens: 24576,
         image: parsedImage ?? undefined,
       })) {
+        if (isFirstChunk) {
+          chunk = stripLeadingFence(chunk);
+          isFirstChunk = false;
+        }
         fullHtml += chunk;
         yield { type: "html_chunk", screenId: currentScreen.id, chunk };
       }
 
-      const html = stripFences(fullHtml);
-      const finalHtml = injectSharedCSS(html, designSystem, platform);
+      const { repaired, errors } = validateAndRepairHtml(fullHtml);
+      if (errors.length > 0) console.warn(`[${currentScreen.id}] HTML repaired:`, errors.join(", "));
+      const finalHtml = injectSharedCSS(repaired, designSystem, platform);
       yield { type: "screen_done", screenId: currentScreen.id, html: finalHtml };
     }
   }

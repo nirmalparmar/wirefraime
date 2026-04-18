@@ -274,6 +274,42 @@ export function PropertyPanel({
     [selectedElement, iframeRef]
   );
 
+  /** Replace classes with a matching prefix group. e.g. swap rounded-* → rounded-pill. */
+  const replaceClassGroup = useCallback(
+    (prefixes: string[], newClass: string) => {
+      if (!selectedElement || !iframeRef.current?.contentWindow) return;
+      iframeRef.current.contentWindow.postMessage(
+        { type: "REPLACE_CLASS_GROUP", xpath: selectedElement.xpath, prefixes, newClass },
+        "*"
+      );
+    },
+    [selectedElement, iframeRef]
+  );
+
+  /** Toggle one or more classes at once. */
+  const toggleClass = useCallback(
+    (className: string, mode: "add" | "remove" | "toggle" = "toggle") => {
+      if (!selectedElement || !iframeRef.current?.contentWindow) return;
+      iframeRef.current.contentWindow.postMessage(
+        { type: "TOGGLE_CLASS", xpath: selectedElement.xpath, className, mode },
+        "*"
+      );
+    },
+    [selectedElement, iframeRef]
+  );
+
+  /** Replace the full class attribute. Used for preset swaps ("Make Primary Button"). */
+  const setClasses = useCallback(
+    (className: string) => {
+      if (!selectedElement || !iframeRef.current?.contentWindow) return;
+      iframeRef.current.contentWindow.postMessage(
+        { type: "SET_CLASSES", xpath: selectedElement.xpath, className },
+        "*"
+      );
+    },
+    [selectedElement, iframeRef]
+  );
+
   if (!selectedElement) return null;
 
   const s = (key: string) => gs(selectedElement, key);
@@ -363,17 +399,93 @@ export function PropertyPanel({
 
         <div className="h-px bg-border/60 mb-4" />
 
-        {/* Quick actions */}
+        {/* Design tokens — class-based swaps for Tailwind-first screens */}
+        <Section label="Design Tokens">
+          <TokenRow
+            label="Radius"
+            options={[
+              { label: "None", classes: "rounded-none", match: ["rounded-none"] },
+              { label: "Btn", classes: "rounded-btn", match: ["rounded-btn"] },
+              { label: "Card", classes: "rounded-card", match: ["rounded-card"] },
+              { label: "Lg", classes: "rounded-card-lg", match: ["rounded-card-lg"] },
+              { label: "Pill", classes: "rounded-pill", match: ["rounded-pill", "rounded-full"] },
+            ]}
+            currentClassName={selectedElement.className ?? ""}
+            onApply={(cls) =>
+              replaceClassGroup(["rounded-none", "rounded-sm", "rounded-md", "rounded-lg", "rounded-xl", "rounded-2xl", "rounded-3xl", "rounded-full", "rounded-card", "rounded-btn", "rounded-pill"], cls)
+            }
+          />
+          <TokenRow
+            label="Shadow"
+            options={[
+              { label: "None", classes: "shadow-none", match: ["shadow-none"] },
+              { label: "Card", classes: "shadow-card", match: ["shadow-card"] },
+              { label: "Lg", classes: "shadow-card-lg", match: ["shadow-card-lg"] },
+            ]}
+            currentClassName={selectedElement.className ?? ""}
+            onApply={(cls) =>
+              replaceClassGroup(["shadow-none", "shadow-sm", "shadow-md", "shadow-lg", "shadow-xl", "shadow-card", "shadow-card-lg"], cls)
+            }
+          />
+          <TokenRow
+            label="Fill"
+            options={[
+              { label: "None", classes: "", match: [] },
+              { label: "Primary", classes: "bg-primary", match: ["bg-primary"] },
+              { label: "Surface", classes: "bg-surface", match: ["bg-surface"] },
+              { label: "Bg", classes: "bg-background", match: ["bg-background"] },
+              { label: "Soft", classes: "bg-primary-soft", match: ["bg-primary-soft"] },
+            ]}
+            currentClassName={selectedElement.className ?? ""}
+            onApply={(cls) =>
+              replaceClassGroup(["bg-primary", "bg-primary-soft", "bg-primary-hover", "bg-secondary", "bg-background", "bg-surface", "bg-success", "bg-error", "bg-success-soft", "bg-error-soft", "bg-white", "bg-black", "bg-transparent"], cls)
+            }
+          />
+          <TokenRow
+            label="Text"
+            options={[
+              { label: "Default", classes: "text-foreground", match: ["text-foreground"] },
+              { label: "Muted", classes: "text-muted", match: ["text-muted"] },
+              { label: "Primary", classes: "text-primary", match: ["text-primary"] },
+              { label: "White", classes: "text-white", match: ["text-white"] },
+            ]}
+            currentClassName={selectedElement.className ?? ""}
+            onApply={(cls) =>
+              replaceClassGroup(["text-foreground", "text-muted", "text-primary", "text-secondary", "text-success", "text-error", "text-white", "text-black"], cls)
+            }
+          />
+        </Section>
+
+        <div className="h-px bg-border/60 mb-4" />
+
+        {/* Presets — one-click swap to a full component class stack */}
+        <Section label="Turn Into">
+          <div className="flex flex-wrap gap-1.5">
+            {PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant="outline"
+                size="sm"
+                className="h-7 text-[11px] px-2.5 rounded-md"
+                onClick={() => setClasses(preset.classes)}
+                title={preset.classes}
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+        </Section>
+
+        <div className="h-px bg-border/60 mb-4" />
+
+        {/* Inline quick actions (one-off style tweaks) */}
         <Section label="Quick Actions">
           <div className="flex flex-wrap gap-1.5">
             {[
               { label: isHidden ? "Show" : "Hide", action: () => sendEdit("display", isHidden ? "block" : "none"), active: false },
-              { label: "Bold", action: () => sendEdit("fontWeight", isBold ? "400" : "700"), active: isBold },
+              { label: "Bold", action: () => toggleClass("font-bold", isBold ? "remove" : "add"), active: isBold },
               { label: "A+", action: handleLarger, active: false },
               { label: "A-", action: handleSmaller, active: false },
-              { label: "Pill", action: () => sendEdit("borderRadius", "9999px"), active: false },
-              { label: "Sharp", action: () => sendEdit("borderRadius", "0px"), active: false },
-              { label: "No Fill", action: () => sendEdit("backgroundColor", "transparent"), active: false },
             ].map((btn) => (
               <Button
                 key={btn.label}
@@ -387,7 +499,133 @@ export function PropertyPanel({
             ))}
           </div>
         </Section>
+
+        <div className="h-px bg-border/60 mb-4" />
+
+        {/* Raw class editor — power-user escape hatch */}
+        <ClassEditor
+          className={selectedElement.className ?? ""}
+          onCommit={(v) => setClasses(v)}
+        />
       </div>
     </div>
+  );
+}
+
+/* ── Preset class stacks for "Turn Into" ──────────────────── */
+
+const PRESETS: Array<{ label: string; classes: string }> = [
+  {
+    label: "Primary Btn",
+    classes:
+      "inline-flex items-center justify-center gap-2 h-btn px-6 bg-primary text-white font-semibold rounded-btn transition hover:bg-primary-hover active:scale-[.98]",
+  },
+  {
+    label: "Secondary Btn",
+    classes:
+      "inline-flex items-center justify-center gap-2 h-btn px-6 bg-transparent text-foreground font-medium border border-border rounded-btn transition hover:bg-surface",
+  },
+  {
+    label: "Ghost Btn",
+    classes:
+      "inline-flex items-center gap-2 h-9 px-3 text-muted font-medium rounded-btn transition hover:bg-surface hover:text-foreground",
+  },
+  {
+    label: "Card",
+    classes: "bg-surface border border-border rounded-card shadow-card p-card",
+  },
+  {
+    label: "Card Lg",
+    classes: "bg-surface border border-border rounded-card-lg shadow-card-lg p-card",
+  },
+  {
+    label: "Pill Badge",
+    classes: "inline-flex items-center px-2.5 py-0.5 bg-primary text-white text-xs font-semibold rounded-pill",
+  },
+  {
+    label: "Success Badge",
+    classes: "inline-flex items-center px-2.5 py-0.5 bg-success-soft text-success text-xs font-semibold rounded-pill",
+  },
+  {
+    label: "Input",
+    classes:
+      "h-input w-full px-3 bg-surface border border-border rounded-btn text-foreground placeholder:text-muted transition focus:border-primary focus:shadow-focus outline-none",
+  },
+];
+
+/* ── TokenRow: radio-style class swapper ────────────────── */
+
+function TokenRow({
+  label,
+  options,
+  currentClassName,
+  onApply,
+}: {
+  label: string;
+  options: Array<{ label: string; classes: string; match: string[] }>;
+  currentClassName: string;
+  onApply: (classes: string) => void;
+}) {
+  const classSet = new Set(currentClassName.split(/\s+/).filter(Boolean));
+  return (
+    <div className="flex items-center gap-2.5 mb-2.5">
+      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>{label}</span>
+      <div className="flex flex-wrap gap-1 flex-1">
+        {options.map((opt) => {
+          const active = opt.match.some((m) => classSet.has(m));
+          return (
+            <button
+              key={opt.label}
+              onClick={() => onApply(opt.classes)}
+              className={`h-7 text-[11px] px-2 rounded-md border transition-all ${
+                active
+                  ? "bg-foreground/10 text-foreground/90 border-foreground/20"
+                  : "bg-foreground/[0.04] border-border text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground/70"
+              }`}
+              style={{ fontFamily: SANS }}
+              title={opt.classes || "no class"}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── ClassEditor: raw class-attribute input ─────────────── */
+
+function ClassEditor({ className, onCommit }: { className: string; onCommit: (v: string) => void }) {
+  const [local, setLocal] = useState(className);
+  const [syncedTo, setSyncedTo] = useState(className);
+  if (className !== syncedTo) {
+    // Derive local from className changes without an effect.
+    setLocal(className);
+    setSyncedTo(className);
+  }
+
+  function commit() {
+    const next = local.replace(/\s+/g, " ").trim();
+    if (next !== className) onCommit(next);
+  }
+
+  return (
+    <Section label="Classes">
+      <textarea
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        placeholder="tailwind classes..."
+        className="w-full min-h-16 text-[11px] px-3 py-2.5 rounded-lg border border-border bg-foreground/[0.04] text-foreground/80 font-mono resize-y outline-none focus:border-ring/50 focus:ring-1 focus:ring-ring/20 transition-all leading-relaxed"
+      />
+      <p className="text-[10px] text-muted-foreground/50 mt-1">⌘ + Enter to apply</p>
+    </Section>
   );
 }

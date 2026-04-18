@@ -150,7 +150,10 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        let referenceHtml: string | undefined;
+        // Grow a list of reference screens as we go — screens 2+ see multiple prior
+        // patterns, not just screen 1. Caps at 3 refs to keep context bounded.
+        const referenceHtmls: string[] = [];
+        const MAX_REFS = 3;
 
         for (let i = 0; i < screensToGenerate.length; i++) {
           const screen = screensToGenerate[i];
@@ -177,11 +180,15 @@ export async function POST(req: NextRequest) {
             (screenId, chunk) => {
               send("html_chunk", { screenId, chunk });
             },
-            referenceHtml
+            referenceHtmls
           );
 
-          if (i === 0) {
-            referenceHtml = html;
+          // Keep the first screen as a permanent reference + rotate the rest.
+          if (referenceHtmls.length < MAX_REFS) {
+            referenceHtmls.push(html);
+          } else {
+            // Keep slot 0 (first screen) stable, rotate the remaining slots.
+            referenceHtmls[1 + ((i - 1) % (MAX_REFS - 1))] = html;
           }
 
           // Persist screen to Postgres + S3

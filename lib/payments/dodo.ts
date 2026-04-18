@@ -2,18 +2,18 @@ export type PlanId = "free" | "pro" | "ultra";
 
 export const PLAN_LIMITS: Record<PlanId, { screens: number }> = {
   free: { screens: 0 },
-  pro: { screens: 50 },
-  ultra: { screens: 120 },
+  pro: { screens: 150 },
+  ultra: { screens: 350 },
 };
 
 /** Monthly prices in USD */
 export const PLAN_PRICES: Record<Exclude<PlanId, "free">, { monthly: number; annual: number }> = {
-  pro: { monthly: 20, annual: Math.round(20 * (1 - 0.56)) },
-  ultra: { monthly: 40, annual: Math.round(40 * (1 - 0.56)) },
+  pro: { monthly: 20, annual: Math.round(20 * (1 - 0.40)) },
+  ultra: { monthly: 40, annual: Math.round(40 * (1 - 0.40)) },
 };
 
 /** Annual discount percentage */
-export const ANNUAL_DISCOUNT = 56;
+export const ANNUAL_DISCOUNT = 40;
 
 /** Map Dodo product IDs → plan IDs (server-side only) */
 export const PLAN_PRODUCT_IDS: Record<string, PlanId> = {

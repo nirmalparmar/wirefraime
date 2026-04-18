@@ -86,6 +86,7 @@ export const EDITOR_BRIDGE_SCRIPT = `
       element: {
         xpath: getXPath(el),
         tagName: el.tagName.toLowerCase(),
+        className: el.className || '',
         textContent: el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
           ? el.textContent || ''
           : '',
@@ -212,6 +213,53 @@ export const EDITOR_BRIDGE_SCRIPT = `
       return;
     }
 
+    // Class-based editing — swap/add/remove Tailwind classes on the selected element.
+    // This keeps HTML "semantic" (edits visible in class attr) vs inline style overrides.
+    if (e.data.type === 'SET_CLASSES') {
+      var setEl = findByXPath(e.data.xpath);
+      if (!setEl) return;
+      setEl.className = e.data.className;
+      var html1 = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+      window.parent.postMessage({ type: 'HTML_UPDATED', html: html1 }, '*');
+      return;
+    }
+    if (e.data.type === 'TOGGLE_CLASS') {
+      var togEl = findByXPath(e.data.xpath);
+      if (!togEl) return;
+      var cls = (e.data.className || '').trim();
+      if (!cls) return;
+      // Support toggling a space-separated class list atomically
+      var classList = cls.split(/\\s+/);
+      var mode = e.data.mode || 'toggle'; // 'add' | 'remove' | 'toggle'
+      for (var ci = 0; ci < classList.length; ci++) {
+        if (mode === 'add') togEl.classList.add(classList[ci]);
+        else if (mode === 'remove') togEl.classList.remove(classList[ci]);
+        else togEl.classList.toggle(classList[ci]);
+      }
+      var html2 = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+      window.parent.postMessage({ type: 'HTML_UPDATED', html: html2 }, '*');
+      return;
+    }
+    if (e.data.type === 'REPLACE_CLASS_GROUP') {
+      // Remove any class matching prefixes, then add the new class.
+      // Used e.g. to change "rounded-card" → "rounded-pill" without duplication.
+      var rEl = findByXPath(e.data.xpath);
+      if (!rEl) return;
+      var prefixes = e.data.prefixes || []; // e.g. ['rounded-']
+      var newCls = e.data.newClass || '';
+      var current = (rEl.className || '').split(/\\s+/).filter(function(c) {
+        for (var pi = 0; pi < prefixes.length; pi++) {
+          if (c === prefixes[pi] || c.indexOf(prefixes[pi]) === 0) return false;
+        }
+        return !!c;
+      });
+      if (newCls) current.push(newCls);
+      rEl.className = current.join(' ');
+      var html3 = '<!DOCTYPE html>' + document.documentElement.outerHTML;
+      window.parent.postMessage({ type: 'HTML_UPDATED', html: html3 }, '*');
+      return;
+    }
+
     if (e.data.type !== 'APPLY_EDIT') return;
     var d = e.data;
     var el = findByXPath(d.xpath);
@@ -223,7 +271,6 @@ export const EDITOR_BRIDGE_SCRIPT = `
       el.style[d.property] = d.value;
     }
 
-    // Serialize and send back
     var html = '<!DOCTYPE html>' + document.documentElement.outerHTML;
     window.parent.postMessage({ type: 'HTML_UPDATED', html: html }, '*');
   });
