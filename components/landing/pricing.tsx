@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeading } from "./section-heading";
 
-const ANNUAL_DISCOUNT = 56;
+const ANNUAL_DISCOUNT = 40;
 
 const PLANS = [
   {
@@ -15,8 +15,9 @@ const PLANS = [
     slug: "pro" as const,
     priceMonthly: 20,
     featured: false,
+    screens: 150,
     features: [
-      "50 screens / month",
+      "150 screens / month",
       "Full component library",
       "HTML & Next.js export",
       "PNG export per screen",
@@ -31,8 +32,9 @@ const PLANS = [
     slug: "ultra" as const,
     priceMonthly: 40,
     featured: true,
+    screens: 350,
     features: [
-      "120 screens / month",
+      "350 screens / month",
       "Everything in Pro",
       "Advanced AI models",
       "Custom design systems",
