@@ -27,7 +27,7 @@ import path from "path";
  * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
  */
 const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = "gemini-3.1-flash-lite-preview";
+const STREAMING_MODEL = "gemini-3.1-pro-preview";
 const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────
