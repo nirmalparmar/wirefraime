@@ -440,19 +440,27 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
     return result;
   }, [app.screens, activeScreenId, streamChunks, streamTick, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight]);
 
-  /* Auto-fit when screens first fully load */
-  const didFit = useRef(false);
+  /* Auto-fit so the viewport always tracks newly generated screens.
+     Triggers on each screen add during generation + once more when generation
+     completes. Without this, the canvas can drift (e.g. iframe wheel pans)
+     and screens end up off-viewport even though they exist in state. */
+  const lastFitCountRef = useRef(0);
   useEffect(() => {
-    if (app.screens.length === 0) didFit.current = false;
-  }, [app.screens.length]);
-
-  const fitThreshold = CANVAS_W <= 500 ? 2 : 3;
-  useEffect(() => {
-    if (!didFit.current && app.screens.length >= fitThreshold && !isGenerating) {
-      didFit.current = true;
-      setTimeout(() => fitView({ padding: 0.12, duration: 500 }), 100);
+    const count = app.screens.length;
+    if (count === 0) {
+      lastFitCountRef.current = 0;
+      return;
     }
-  }, [app.screens.length, isGenerating, fitView, fitThreshold]);
+    const grew = count > lastFitCountRef.current;
+    const finishingUp = !isGenerating && lastFitCountRef.current !== count;
+    if (!grew && !finishingUp) return;
+
+    lastFitCountRef.current = count;
+    const t = setTimeout(() => {
+      try { fitView({ padding: 0.15, duration: 500 }); } catch { /* unmounted */ }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [app.screens.length, isGenerating, fitView]);
 
   return (
     <div className="h-full w-full overflow-hidden">
