@@ -1,4 +1,3 @@
-import { SectionHeading } from "./section-heading";
 
 const STEPS = [
   {
@@ -63,46 +62,46 @@ export function HowItWorks() {
   return (
     <section
       id="how-it-works"
-      className="mx-auto max-w-5xl px-5 py-20 md:px-12 md:py-28"
+      className="relative px-5 py-24 md:px-10 md:py-32"
     >
-      <div className="mb-12 md:mb-16">
-        <SectionHeading
-          badge="How it works"
-          title={
-            <>
-              Zero to full design
-              <br />
-              in <em className="text-primary">under two minutes.</em>
-            </>
-          }
-        />
-      </div>
+      <div className="mx-auto max-w-6xl">
+        <div className="mx-auto mb-14 max-w-2xl text-center md:mb-20">
+          <span className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+            How it works
+          </span>
+          <h2 className="mt-4 text-[clamp(30px,4.5vw,52px)] font-semibold leading-[1.05] tracking-[-0.025em] text-foreground">
+            From prompt to full UI design in two minutes
+          </h2>
+          <p className="mx-auto mt-4 max-w-lg text-balance text-base leading-relaxed text-muted-foreground md:text-lg">
+            Describe your app. AI wireframes every screen, builds the design
+            system, and connects the flow.
+          </p>
+        </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {STEPS.map((step) => (
-          <div
-            key={step.n}
-            className="liquid-glass-adaptive group flex flex-col rounded-xl p-7 transition-all hover:bg-foreground/[0.03] md:p-8"
-          >
-            {/* Step number + connector */}
-            <div className="mb-5 flex items-center gap-3">
-              <div className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-sm font-semibold text-white">
-                {step.n}
+        <div className="grid gap-4 md:grid-cols-3 md:gap-5">
+          {STEPS.map((step) => (
+            <div
+              key={step.n}
+              className="group flex flex-col rounded-3xl border border-foreground/8 bg-card/60 p-7 transition-colors hover:bg-card/80 md:p-8"
+            >
+              <div className="mb-5 flex items-center gap-3">
+                <div className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground/[0.06] text-[12px] font-semibold tabular-nums text-foreground/75 ring-1 ring-foreground/5">
+                  {step.n}
+                </div>
+                <div className="h-px flex-1 bg-foreground/8" />
               </div>
-              <div className="h-px flex-1 bg-foreground/8" />
+
+              <h3 className="mb-2 text-[19px] font-semibold tracking-tight text-foreground md:text-[20px]">
+                {step.title}
+              </h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {step.desc}
+              </p>
+
+              {step.visual}
             </div>
-
-            <h3 className="mb-2 font-serif text-xl text-foreground">
-              {step.title}
-            </h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {step.desc}
-            </p>
-
-            {/* Mini visual */}
-            {step.visual}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </section>
   );

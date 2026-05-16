@@ -2,8 +2,6 @@
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { useWorkspace, type SelectedElement } from "@/lib/store/use-workspace";
-import { SANS } from "@/lib/constants";
-import { Button } from "@/components/ui/button";
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
@@ -23,52 +21,97 @@ function roundPx(v: string): string {
   return v.replace(/(\d+\.\d+)px/g, (_, n) => `${Math.round(parseFloat(n))}px`);
 }
 
-function parsePx(v: string): number | null {
-  const m = v.match(/([\d.]+)\s*px/);
-  return m ? parseFloat(m[1]) : null;
+function normalizeWeight(v: string): string {
+  const trimmed = (v || "").toLowerCase().trim();
+  if (trimmed === "normal") return "400";
+  if (trimmed === "bold") return "700";
+  if (trimmed === "lighter") return "300";
+  if (trimmed === "bolder") return "700";
+  return v;
 }
 
-/* ── Icons ───────────────────────────────────────────────── */
+/* ── Neumorphic shadow tokens ────────────────────────────── */
 
-function CloseIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <path d="M3 3l6 6M9 3l-6 6" />
-    </svg>
-  );
-}
+const SOFT_SHADOW = "shadow-[var(--ws-soft-lg)]";
+const INSET_SOFT = "shadow-[var(--ws-inset)]";
+const RAISED_SOFT = "shadow-[var(--ws-raised)]";
 
-/* ── Tiny components ─────────────────────────────────────── */
+/* ── Primitives ──────────────────────────────────────────── */
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mb-4">
-      <p
-        className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-[0.1em] mb-2.5"
-        style={{ fontFamily: SANS }}
-      >
+    <div className="space-y-3">
+      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
         {label}
-      </p>
-      {children}
+      </div>
+      <div className="space-y-2.5">{children}</div>
     </div>
   );
 }
 
-function ColorField({ label, value, onCommit }: { label: string; value: string; onCommit: (v: string) => void }) {
-  const hex = rgbToHex(value);
+function Divider() {
+  return <div className="my-5 h-px bg-foreground/[0.05]" />;
+}
+
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>{label}</span>
-      <div className="flex items-center gap-2 flex-1">
+    <div className="flex items-center gap-2.5">
+      <span className="w-[48px] shrink-0 text-[12px] text-muted-foreground/80">{label}</span>
+      <div className="flex flex-1 items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+/* ── Fields ──────────────────────────────────────────────── */
+
+function ColorField({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  onCommit: (v: string) => void;
+}) {
+  const hex = rgbToHex(value);
+  // rAF-throttled commit — the native color picker fires onChange continuously
+  // during drag (often 60+ times/sec). Without this, the bridge serializes the
+  // full document on every event and the canvas grinds.
+  const pendingRef = useRef<string | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  function scheduleCommit(next: string) {
+    pendingRef.current = next;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const v = pendingRef.current;
+      pendingRef.current = null;
+      if (v !== null) onCommit(v);
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  return (
+    <FieldRow label={label}>
+      <label
+        className={`relative grid size-7 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-lg transition ${RAISED_SOFT}`}
+      >
+        <span aria-hidden className="absolute inset-0" style={{ background: hex }} />
         <input
           type="color"
           value={hex}
-          onChange={(e) => onCommit(e.target.value)}
-          className="w-7 h-7 rounded-md border border-border cursor-pointer bg-transparent p-0.5 shrink-0"
+          onChange={(e) => scheduleCommit(e.target.value)}
+          className="absolute inset-0 size-full cursor-pointer opacity-0"
         />
-        <span className="text-[12px] font-mono text-foreground/60 uppercase tracking-wide">{hex}</span>
-      </div>
-    </div>
+      </label>
+      <span className="font-mono text-[11px] uppercase tracking-wide text-foreground/60">{hex}</span>
+    </FieldRow>
   );
 }
 
@@ -77,22 +120,20 @@ function EditableField({
   value,
   onCommit,
   placeholder,
-  suffix,
 }: {
   label: string;
   value: string;
   onCommit: (v: string) => void;
   placeholder?: string;
-  suffix?: string;
 }) {
   const [local, setLocal] = useState(value);
-  const elRef = useRef<HTMLInputElement>(null);
-  const prevValue = useRef(value);
+  const prev = useRef(value);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (value !== prevValue.current) {
+    if (value !== prev.current) {
       setLocal(value);
-      prevValue.current = value;
+      prev.current = value;
     }
   }, [value]);
 
@@ -101,63 +142,66 @@ function EditableField({
   }
 
   return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>{label}</span>
-      <div className="flex items-center gap-1.5 flex-1">
-        <input
-          ref={elRef}
-          value={local}
-          onChange={(e) => setLocal(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); elRef.current?.blur(); } }}
-          placeholder={placeholder}
-          className="h-8 w-full text-[12px] px-2.5 rounded-lg border border-border bg-foreground/[0.04] text-foreground/80 font-mono outline-none focus:border-ring/50 focus:ring-1 focus:ring-ring/20 transition-all"
-        />
-        {suffix && <span className="text-[11px] text-muted-foreground/50 shrink-0">{suffix}</span>}
-      </div>
-    </div>
+    <FieldRow label={label}>
+      <input
+        ref={inputRef}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+            inputRef.current?.blur();
+          }
+        }}
+        placeholder={placeholder}
+        className={`h-8 w-full rounded-xl bg-foreground/[0.04] px-3 font-mono text-[12px] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:bg-foreground/[0.06] focus:ring-2 focus:ring-[#0d99ff]/40 ${INSET_SOFT}`}
+      />
+    </FieldRow>
   );
 }
 
-function AlignButtons({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const options = [
-    { v: "left", icon: "left" },
-    { v: "center", icon: "center" },
-    { v: "right", icon: "right" },
-  ];
-  const active = value === "start" ? "left" : value;
+function AlignButtons({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const options = ["left", "center", "right"] as const;
+  const active = value === "start" || value === "" ? "left" : value;
   return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>Align</span>
-      <div className="flex border border-border rounded-lg overflow-hidden">
+    <FieldRow label="Align">
+      <div className={`flex flex-1 items-center gap-0.5 rounded-xl bg-foreground/[0.04] p-0.5 ${INSET_SOFT}`}>
         {options.map((o) => (
           <button
-            key={o.v}
-            onClick={() => onChange(o.v)}
-            className={`h-8 w-9 text-[12px] flex items-center justify-center transition-all ${
-              active === o.v
-                ? "bg-foreground/10 text-foreground/90"
-                : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground/60"
+            key={o}
+            type="button"
+            onClick={() => onChange(o)}
+            title={o}
+            className={`grid h-7 flex-1 place-items-center rounded-lg transition ${
+              active === o
+                ? `bg-card text-foreground ${RAISED_SOFT}`
+                : "text-muted-foreground hover:text-foreground/80"
             }`}
-            title={o.v}
-            style={{ fontFamily: SANS }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              {o.v === "left" && (
+              {o === "left" && (
                 <>
                   <rect x="1" y="2" width="12" height="1.5" rx="0.5" fill="currentColor" />
                   <rect x="1" y="6" width="8" height="1.5" rx="0.5" fill="currentColor" />
                   <rect x="1" y="10" width="10" height="1.5" rx="0.5" fill="currentColor" />
                 </>
               )}
-              {o.v === "center" && (
+              {o === "center" && (
                 <>
                   <rect x="1" y="2" width="12" height="1.5" rx="0.5" fill="currentColor" />
                   <rect x="3" y="6" width="8" height="1.5" rx="0.5" fill="currentColor" />
                   <rect x="2" y="10" width="10" height="1.5" rx="0.5" fill="currentColor" />
                 </>
               )}
-              {o.v === "right" && (
+              {o === "right" && (
                 <>
                   <rect x="1" y="2" width="12" height="1.5" rx="0.5" fill="currentColor" />
                   <rect x="5" y="6" width="8" height="1.5" rx="0.5" fill="currentColor" />
@@ -168,64 +212,118 @@ function AlignButtons({ value, onChange }: { value: string; onChange: (v: string
           </button>
         ))}
       </div>
-    </div>
+    </FieldRow>
   );
 }
 
-function WeightSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const weights = [
-    { v: "300", l: "Light" },
-    { v: "400", l: "Regular" },
-    { v: "500", l: "Medium" },
-    { v: "600", l: "Semibold" },
-    { v: "700", l: "Bold" },
-  ];
-  const current = weights.find((w) => w.v === value);
+const WEIGHTS = [
+  { v: "300", l: "Light" },
+  { v: "400", l: "Regular" },
+  { v: "500", l: "Medium" },
+  { v: "600", l: "Semibold" },
+  { v: "700", l: "Bold" },
+];
 
+function WeightSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const normalized = normalizeWeight(value);
   return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>Weight</span>
+    <FieldRow label="Weight">
       <select
-        value={value}
+        value={normalized}
         onChange={(e) => onChange(e.target.value)}
-        className="h-8 flex-1 text-[12px] px-2.5 rounded-lg border border-border bg-foreground/[0.04] text-foreground/80 outline-none focus:border-ring/50 focus:ring-1 focus:ring-ring/20 cursor-pointer transition-all"
+        className={`h-8 w-full cursor-pointer rounded-xl bg-foreground/[0.04] px-3 text-[12px] text-foreground/85 outline-none transition focus:bg-foreground/[0.06] focus:ring-2 focus:ring-[#0d99ff]/40 ${INSET_SOFT}`}
       >
-        {!current && <option value={value}>{value}</option>}
-        {weights.map((w) => (
-          <option key={w.v} value={w.v}>{w.l}</option>
+        {!WEIGHTS.find((w) => w.v === normalized) && (
+          <option value={normalized}>{normalized}</option>
+        )}
+        {WEIGHTS.map((w) => (
+          <option key={w.v} value={w.v}>
+            {w.l}
+          </option>
         ))}
       </select>
-    </div>
+    </FieldRow>
   );
 }
 
-function OpacitySlider({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const num = parseFloat(value) || 1;
+function OpacitySlider({
+  value,
+  onChange,
+  onReset,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onReset: () => void;
+}) {
+  const num = parseFloat(value);
+  const safe = isNaN(num) ? 1 : num;
+  const isDimmed = safe < 1;
+
+  // rAF-throttle so drag events don't fire 60+ APPLY_EDITs per second
+  const pendingRef = useRef<string | null>(null);
+  const rafRef = useRef<number | null>(null);
+  function scheduleChange(v: string) {
+    pendingRef.current = v;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const next = pendingRef.current;
+      pendingRef.current = null;
+      if (next !== null) onChange(next);
+    });
+  }
+  useEffect(() => () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
   return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>Opacity</span>
+    <FieldRow label="Opacity">
       <input
         type="range"
-        min="0"
+        min="0.1"
         max="1"
         step="0.05"
-        value={num}
-        onChange={(e) => onChange(e.target.value)}
-        className="flex-1 h-1.5 accent-primary cursor-pointer"
+        value={safe}
+        onChange={(e) => scheduleChange(e.target.value)}
+        className="h-1 flex-1 cursor-pointer accent-[#0d99ff]"
       />
-      <span className="text-[11px] font-mono text-muted-foreground w-[34px] text-right tabular-nums">{Math.round(num * 100)}%</span>
-    </div>
+      <button
+        type="button"
+        onClick={onReset}
+        disabled={!isDimmed}
+        title={isDimmed ? "Reset to 100%" : "Opacity is 100%"}
+        className={`w-[44px] shrink-0 rounded-md px-1 py-0.5 text-right font-mono text-[11px] tabular-nums transition ${
+          isDimmed
+            ? "cursor-pointer text-foreground hover:bg-foreground/[0.06]"
+            : "cursor-default text-muted-foreground/70"
+        }`}
+      >
+        {Math.round(safe * 100)}%
+      </button>
+    </FieldRow>
   );
 }
 
-function TextContentEditor({ textContent, onCommit }: { textContent: string; onCommit: (v: string) => void }) {
+function TextContentEditor({
+  textContent,
+  onCommit,
+}: {
+  textContent: string;
+  onCommit: (v: string) => void;
+}) {
   const [local, setLocal] = useState(textContent);
-  const prevValue = useRef(textContent);
+  const prev = useRef(textContent);
 
   useEffect(() => {
-    if (textContent !== prevValue.current) {
+    if (textContent !== prev.current) {
       setLocal(textContent);
-      prevValue.current = textContent;
+      prev.current = textContent;
     }
   }, [textContent]);
 
@@ -245,11 +343,29 @@ function TextContentEditor({ textContent, onCommit }: { textContent: string; onC
             commit();
           }
         }}
-        className="w-full h-16 text-[13px] px-3 py-2.5 rounded-lg border border-border bg-foreground/[0.04] text-foreground/80 resize-none outline-none focus:border-ring/50 focus:ring-1 focus:ring-ring/20 transition-all leading-relaxed"
-        style={{ fontFamily: SANS }}
+        className={`h-16 w-full resize-none rounded-xl bg-foreground/[0.04] px-3 py-2.5 text-[13px] leading-relaxed text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:bg-foreground/[0.06] focus:ring-2 focus:ring-[#0d99ff]/40 ${INSET_SOFT}`}
         placeholder="Text content..."
       />
     </Section>
+  );
+}
+
+/* ── Selection chip ──────────────────────────────────────── */
+
+function SelectionChip({ tag, className }: { tag: string; className?: string }) {
+  const firstClass = className?.split(/\s+/).filter(Boolean)[0];
+  return (
+    <div
+      className={`flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-2.5 py-1 ${INSET_SOFT}`}
+    >
+      <span className="size-1.5 rounded-full bg-[#0d99ff]" />
+      <span className="font-mono text-[11px] text-foreground/80">&lt;{tag}&gt;</span>
+      {firstClass && (
+        <span className="max-w-[80px] truncate font-mono text-[10px] text-muted-foreground/70">
+          .{firstClass}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -262,52 +378,80 @@ export function PropertyPanel({
 }) {
   const { state, dispatch } = useWorkspace();
   const { selectedElement } = state;
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const sendEdit = useCallback(
+  const applyStyle = useCallback(
     (property: string, value: string) => {
-      if (!selectedElement || !iframeRef.current?.contentWindow) return;
-      iframeRef.current.contentWindow.postMessage(
-        { type: "APPLY_EDIT", xpath: selectedElement.xpath, property, value },
-        "*"
-      );
+      if (!selectedElement) return;
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "APPLY_EDIT", xpath: selectedElement.xpath, property, value },
+          "*"
+        );
+      }
+      dispatch({
+        type: "SELECT_ELEMENT",
+        element: {
+          ...selectedElement,
+          styles: { ...selectedElement.styles, [property]: value } as SelectedElement["styles"],
+        },
+      });
     },
-    [selectedElement, iframeRef]
+    [selectedElement, iframeRef, dispatch]
   );
 
-  /** Replace classes with a matching prefix group. e.g. swap rounded-* → rounded-pill. */
-  const replaceClassGroup = useCallback(
-    (prefixes: string[], newClass: string) => {
-      if (!selectedElement || !iframeRef.current?.contentWindow) return;
-      iframeRef.current.contentWindow.postMessage(
-        { type: "REPLACE_CLASS_GROUP", xpath: selectedElement.xpath, prefixes, newClass },
-        "*"
-      );
+  const resetStyle = useCallback(
+    (property: string) => {
+      if (!selectedElement) return;
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          {
+            type: "REMOVE_INLINE_STYLE",
+            xpath: selectedElement.xpath,
+            properties: [property],
+          },
+          "*"
+        );
+      }
+      const nextStyles = { ...selectedElement.styles, [property]: property === "opacity" ? "1" : "" };
+      dispatch({
+        type: "SELECT_ELEMENT",
+        element: { ...selectedElement, styles: nextStyles as SelectedElement["styles"] },
+      });
     },
-    [selectedElement, iframeRef]
+    [selectedElement, iframeRef, dispatch]
   );
 
-  /** Toggle one or more classes at once. */
-  const toggleClass = useCallback(
-    (className: string, mode: "add" | "remove" | "toggle" = "toggle") => {
-      if (!selectedElement || !iframeRef.current?.contentWindow) return;
-      iframeRef.current.contentWindow.postMessage(
-        { type: "TOGGLE_CLASS", xpath: selectedElement.xpath, className, mode },
-        "*"
-      );
+  const applyTextContent = useCallback(
+    (value: string) => {
+      if (!selectedElement) return;
+      if (iframeRef.current?.contentWindow) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "APPLY_EDIT", xpath: selectedElement.xpath, property: "textContent", value },
+          "*"
+        );
+      }
+      dispatch({
+        type: "SELECT_ELEMENT",
+        element: { ...selectedElement, textContent: value },
+      });
     },
-    [selectedElement, iframeRef]
+    [selectedElement, iframeRef, dispatch]
   );
 
-  /** Replace the full class attribute. Used for preset swaps ("Make Primary Button"). */
-  const setClasses = useCallback(
+  const applyClasses = useCallback(
     (className: string) => {
       if (!selectedElement || !iframeRef.current?.contentWindow) return;
       iframeRef.current.contentWindow.postMessage(
         { type: "SET_CLASSES", xpath: selectedElement.xpath, className },
         "*"
       );
+      dispatch({
+        type: "SELECT_ELEMENT",
+        element: { ...selectedElement, className },
+      });
     },
-    [selectedElement, iframeRef]
+    [selectedElement, iframeRef, dispatch]
   );
 
   if (!selectedElement) return null;
@@ -316,294 +460,162 @@ export function PropertyPanel({
   const isTextNode = selectedElement.textContent.length > 0;
   const isTransparent = s("backgroundColor") === "rgba(0, 0, 0, 0)";
   const isHidden = s("display") === "none";
-  const isBold = parseInt(s("fontWeight"), 10) >= 700;
-
-  const handleLarger = () => {
-    const current = parsePx(s("fontSize"));
-    if (current !== null) sendEdit("fontSize", `${current + 2}px`);
-  };
-
-  const handleSmaller = () => {
-    const current = parsePx(s("fontSize"));
-    if (current !== null && current > 2) sendEdit("fontSize", `${current - 2}px`);
-  };
 
   return (
-    <div
-      className="absolute right-3 top-3 z-20 w-[280px] max-h-[calc(100%-24px)] overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-background/80 shadow-2xl backdrop-blur-2xl animate-in slide-in-from-right-4 duration-200"
+    <aside
+      className={`absolute right-[72px] top-4 z-20 flex max-h-[calc(100%-32px)] w-[300px] flex-col overflow-hidden rounded-3xl bg-card ${SOFT_SHADOW} animate-in slide-in-from-right-4 duration-200`}
     >
       {/* Header */}
-      <div className="px-4 py-3.5 border-b border-border/60">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-[0.1em]">
-            Properties
-          </span>
+      <div className="flex items-center justify-between px-5 py-3.5">
+        <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+          Properties
+        </span>
+        <div className="flex items-center gap-1.5">
           <button
-            onClick={() => dispatch({ type: "SELECT_ELEMENT", element: null })}
-            className="text-foreground/30 hover:text-foreground/70 p-1 rounded-md hover:bg-foreground/10 transition-colors"
-            title="Close panel"
+            type="button"
+            onClick={() => {
+              iframeRef.current?.contentWindow?.postMessage({ type: "SELECT_PARENT" }, "*");
+            }}
+            aria-label="Select parent element"
+            title="Select parent (Shift + ↑)"
+            className={`grid size-7 place-items-center rounded-full text-muted-foreground/70 transition hover:text-foreground ${RAISED_SOFT}`}
           >
-            <CloseIcon />
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9V3M3 6l3-3 3 3" />
+            </svg>
           </button>
-        </div>
-        {/* Element info */}
-        <div className="flex items-center gap-2">
-          <div className="px-2 py-1 rounded-md bg-foreground/[0.06] text-[11px] font-mono text-foreground/70">
-            &lt;{selectedElement.tagName}&gt;
-          </div>
-          <span className="text-[11px] text-muted-foreground/50 font-mono tabular-nums">
-            {roundPx(s("width"))} × {roundPx(s("height"))}
-          </span>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "SELECT_ELEMENT", element: null })}
+            aria-label="Close panel"
+            className={`grid size-7 place-items-center rounded-full text-muted-foreground/70 transition hover:text-foreground ${RAISED_SOFT}`}
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div className="px-4 py-4 space-y-0">
-        {/* Text content */}
+      {/* Selection summary */}
+      <div className="px-5 pb-3">
+        <SelectionChip tag={selectedElement.tagName} className={selectedElement.className} />
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-none px-5 pb-5">
         {isTextNode && (
           <>
-            <TextContentEditor
-              textContent={selectedElement.textContent}
-              onCommit={(v) => {
-                dispatch({ type: "SELECT_ELEMENT", element: { ...selectedElement, textContent: v } });
-                sendEdit("textContent", v);
-              }}
-            />
-            <div className="h-px bg-border/60 mb-4" />
+            <TextContentEditor textContent={selectedElement.textContent} onCommit={applyTextContent} />
+            <Divider />
           </>
         )}
 
-        {/* Fill & Stroke */}
         <Section label="Color">
-          <ColorField label="Text" value={s("color")} onCommit={(v) => sendEdit("color", v)} />
+          <ColorField label="Text" value={s("color")} onCommit={(v) => applyStyle("color", v)} />
           {!isTransparent && (
-            <ColorField label="Fill" value={s("backgroundColor")} onCommit={(v) => sendEdit("backgroundColor", v)} />
+            <ColorField
+              label="Fill"
+              value={s("backgroundColor")}
+              onCommit={(v) => applyStyle("backgroundColor", v)}
+            />
           )}
         </Section>
 
-        <div className="h-px bg-border/60 mb-4" />
+        {isTextNode && (
+          <>
+            <Divider />
+            <Section label="Typography">
+              <EditableField
+                label="Size"
+                value={roundPx(s("fontSize"))}
+                onCommit={(v) => applyStyle("fontSize", v)}
+                placeholder="16px"
+              />
+              <WeightSelect value={s("fontWeight")} onChange={(v) => applyStyle("fontWeight", v)} />
+              <AlignButtons value={s("textAlign")} onChange={(v) => applyStyle("textAlign", v)} />
+            </Section>
+          </>
+        )}
 
-        {/* Typography */}
-        <Section label="Typography">
-          <EditableField label="Size" value={roundPx(s("fontSize"))} onCommit={(v) => sendEdit("fontSize", v)} placeholder="16px" />
-          <WeightSelect value={s("fontWeight")} onChange={(v) => sendEdit("fontWeight", v)} />
-          <AlignButtons value={s("textAlign")} onChange={(v) => sendEdit("textAlign", v)} />
-        </Section>
+        <Divider />
 
-        <div className="h-px bg-border/60 mb-4" />
-
-        {/* Style */}
         <Section label="Style">
-          <EditableField label="Radius" value={roundPx(s("borderRadius"))} onCommit={(v) => sendEdit("borderRadius", v)} placeholder="0px" />
-          <OpacitySlider value={s("opacity")} onChange={(v) => sendEdit("opacity", v)} />
-        </Section>
-
-        <div className="h-px bg-border/60 mb-4" />
-
-        {/* Design tokens — class-based swaps for Tailwind-first screens */}
-        <Section label="Design Tokens">
-          <TokenRow
+          <EditableField
             label="Radius"
-            options={[
-              { label: "None", classes: "rounded-none", match: ["rounded-none"] },
-              { label: "Btn", classes: "rounded-btn", match: ["rounded-btn"] },
-              { label: "Card", classes: "rounded-card", match: ["rounded-card"] },
-              { label: "Lg", classes: "rounded-card-lg", match: ["rounded-card-lg"] },
-              { label: "Pill", classes: "rounded-pill", match: ["rounded-pill", "rounded-full"] },
-            ]}
-            currentClassName={selectedElement.className ?? ""}
-            onApply={(cls) =>
-              replaceClassGroup(["rounded-none", "rounded-sm", "rounded-md", "rounded-lg", "rounded-xl", "rounded-2xl", "rounded-3xl", "rounded-full", "rounded-card", "rounded-btn", "rounded-pill"], cls)
-            }
+            value={roundPx(s("borderRadius"))}
+            onCommit={(v) => applyStyle("borderRadius", v)}
+            placeholder="0px"
           />
-          <TokenRow
-            label="Shadow"
-            options={[
-              { label: "None", classes: "shadow-none", match: ["shadow-none"] },
-              { label: "Card", classes: "shadow-card", match: ["shadow-card"] },
-              { label: "Lg", classes: "shadow-card-lg", match: ["shadow-card-lg"] },
-            ]}
-            currentClassName={selectedElement.className ?? ""}
-            onApply={(cls) =>
-              replaceClassGroup(["shadow-none", "shadow-sm", "shadow-md", "shadow-lg", "shadow-xl", "shadow-card", "shadow-card-lg"], cls)
-            }
+          <OpacitySlider
+            value={s("opacity")}
+            onChange={(v) => applyStyle("opacity", v)}
+            onReset={() => resetStyle("opacity")}
           />
-          <TokenRow
-            label="Fill"
-            options={[
-              { label: "None", classes: "", match: [] },
-              { label: "Primary", classes: "bg-primary", match: ["bg-primary"] },
-              { label: "Surface", classes: "bg-surface", match: ["bg-surface"] },
-              { label: "Bg", classes: "bg-background", match: ["bg-background"] },
-              { label: "Soft", classes: "bg-primary-soft", match: ["bg-primary-soft"] },
-            ]}
-            currentClassName={selectedElement.className ?? ""}
-            onApply={(cls) =>
-              replaceClassGroup(["bg-primary", "bg-primary-soft", "bg-primary-hover", "bg-secondary", "bg-background", "bg-surface", "bg-success", "bg-error", "bg-success-soft", "bg-error-soft", "bg-white", "bg-black", "bg-transparent"], cls)
-            }
-          />
-          <TokenRow
-            label="Text"
-            options={[
-              { label: "Default", classes: "text-foreground", match: ["text-foreground"] },
-              { label: "Muted", classes: "text-muted", match: ["text-muted"] },
-              { label: "Primary", classes: "text-primary", match: ["text-primary"] },
-              { label: "White", classes: "text-white", match: ["text-white"] },
-            ]}
-            currentClassName={selectedElement.className ?? ""}
-            onApply={(cls) =>
-              replaceClassGroup(["text-foreground", "text-muted", "text-primary", "text-secondary", "text-success", "text-error", "text-white", "text-black"], cls)
-            }
-          />
-        </Section>
-
-        <div className="h-px bg-border/60 mb-4" />
-
-        {/* Presets — one-click swap to a full component class stack */}
-        <Section label="Turn Into">
-          <div className="flex flex-wrap gap-1.5">
-            {PRESETS.map((preset) => (
-              <Button
-                key={preset.label}
-                variant="outline"
-                size="sm"
-                className="h-7 text-[11px] px-2.5 rounded-md"
-                onClick={() => setClasses(preset.classes)}
-                title={preset.classes}
-              >
-                {preset.label}
-              </Button>
-            ))}
-          </div>
-        </Section>
-
-        <div className="h-px bg-border/60 mb-4" />
-
-        {/* Inline quick actions (one-off style tweaks) */}
-        <Section label="Quick Actions">
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { label: isHidden ? "Show" : "Hide", action: () => sendEdit("display", isHidden ? "block" : "none"), active: false },
-              { label: "Bold", action: () => toggleClass("font-bold", isBold ? "remove" : "add"), active: isBold },
-              { label: "A+", action: handleLarger, active: false },
-              { label: "A-", action: handleSmaller, active: false },
-            ].map((btn) => (
-              <Button
-                key={btn.label}
-                variant={btn.active ? "default" : "outline"}
-                size="sm"
-                className="h-7 text-[11px] px-2.5 rounded-md"
-                onClick={btn.action}
-              >
-                {btn.label}
-              </Button>
-            ))}
-          </div>
-        </Section>
-
-        <div className="h-px bg-border/60 mb-4" />
-
-        {/* Raw class editor — power-user escape hatch */}
-        <ClassEditor
-          className={selectedElement.className ?? ""}
-          onCommit={(v) => setClasses(v)}
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ── Preset class stacks for "Turn Into" ──────────────────── */
-
-const PRESETS: Array<{ label: string; classes: string }> = [
-  {
-    label: "Primary Btn",
-    classes:
-      "inline-flex items-center justify-center gap-2 h-btn px-6 bg-primary text-white font-semibold rounded-btn transition hover:bg-primary-hover active:scale-[.98]",
-  },
-  {
-    label: "Secondary Btn",
-    classes:
-      "inline-flex items-center justify-center gap-2 h-btn px-6 bg-transparent text-foreground font-medium border border-border rounded-btn transition hover:bg-surface",
-  },
-  {
-    label: "Ghost Btn",
-    classes:
-      "inline-flex items-center gap-2 h-9 px-3 text-muted font-medium rounded-btn transition hover:bg-surface hover:text-foreground",
-  },
-  {
-    label: "Card",
-    classes: "bg-surface border border-border rounded-card shadow-card p-card",
-  },
-  {
-    label: "Card Lg",
-    classes: "bg-surface border border-border rounded-card-lg shadow-card-lg p-card",
-  },
-  {
-    label: "Pill Badge",
-    classes: "inline-flex items-center px-2.5 py-0.5 bg-primary text-white text-xs font-semibold rounded-pill",
-  },
-  {
-    label: "Success Badge",
-    classes: "inline-flex items-center px-2.5 py-0.5 bg-success-soft text-success text-xs font-semibold rounded-pill",
-  },
-  {
-    label: "Input",
-    classes:
-      "h-input w-full px-3 bg-surface border border-border rounded-btn text-foreground placeholder:text-muted transition focus:border-primary focus:shadow-focus outline-none",
-  },
-];
-
-/* ── TokenRow: radio-style class swapper ────────────────── */
-
-function TokenRow({
-  label,
-  options,
-  currentClassName,
-  onApply,
-}: {
-  label: string;
-  options: Array<{ label: string; classes: string; match: string[] }>;
-  currentClassName: string;
-  onApply: (classes: string) => void;
-}) {
-  const classSet = new Set(currentClassName.split(/\s+/).filter(Boolean));
-  return (
-    <div className="flex items-center gap-2.5 mb-2.5">
-      <span className="text-[12px] text-muted-foreground w-[50px] shrink-0" style={{ fontFamily: SANS }}>{label}</span>
-      <div className="flex flex-wrap gap-1 flex-1">
-        {options.map((opt) => {
-          const active = opt.match.some((m) => classSet.has(m));
-          return (
+          <FieldRow label="Visible">
             <button
-              key={opt.label}
-              onClick={() => onApply(opt.classes)}
-              className={`h-7 text-[11px] px-2 rounded-md border transition-all ${
-                active
-                  ? "bg-foreground/10 text-foreground/90 border-foreground/20"
-                  : "bg-foreground/[0.04] border-border text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground/70"
+              type="button"
+              onClick={() => applyStyle("display", isHidden ? "" : "none")}
+              className={`h-7 rounded-lg px-3 text-[11px] font-medium transition ${
+                isHidden
+                  ? `bg-foreground/[0.05] text-muted-foreground hover:text-foreground ${INSET_SOFT}`
+                  : `bg-[#0d99ff]/15 text-[#0d99ff] ${RAISED_SOFT}`
               }`}
-              style={{ fontFamily: SANS }}
-              title={opt.classes || "no class"}
             >
-              {opt.label}
+              {isHidden ? "Hidden" : "Visible"}
             </button>
-          );
-        })}
+          </FieldRow>
+        </Section>
+
+        <Divider />
+
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+            Advanced
+          </span>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            className={`text-muted-foreground/50 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+          >
+            <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-4">
+            <ClassEditor className={selectedElement.className ?? ""} onCommit={applyClasses} />
+          </div>
+        )}
       </div>
-    </div>
+    </aside>
   );
 }
 
-/* ── ClassEditor: raw class-attribute input ─────────────── */
+/* ── ClassEditor — power-user escape hatch ───────────────── */
 
-function ClassEditor({ className, onCommit }: { className: string; onCommit: (v: string) => void }) {
+function ClassEditor({
+  className,
+  onCommit,
+}: {
+  className: string;
+  onCommit: (v: string) => void;
+}) {
   const [local, setLocal] = useState(className);
-  const [syncedTo, setSyncedTo] = useState(className);
-  if (className !== syncedTo) {
-    // Derive local from className changes without an effect.
-    setLocal(className);
-    setSyncedTo(className);
-  }
+  const prev = useRef(className);
+
+  useEffect(() => {
+    if (className !== prev.current) {
+      setLocal(className);
+      prev.current = className;
+    }
+  }, [className]);
 
   function commit() {
     const next = local.replace(/\s+/g, " ").trim();
@@ -611,7 +623,8 @@ function ClassEditor({ className, onCommit }: { className: string; onCommit: (v:
   }
 
   return (
-    <Section label="Classes">
+    <div className="space-y-2">
+      <span className="text-[11px] text-muted-foreground/80">Classes</span>
       <textarea
         value={local}
         onChange={(e) => setLocal(e.target.value)}
@@ -623,9 +636,9 @@ function ClassEditor({ className, onCommit }: { className: string; onCommit: (v:
           }
         }}
         placeholder="tailwind classes..."
-        className="w-full min-h-16 text-[11px] px-3 py-2.5 rounded-lg border border-border bg-foreground/[0.04] text-foreground/80 font-mono resize-y outline-none focus:border-ring/50 focus:ring-1 focus:ring-ring/20 transition-all leading-relaxed"
+        className={`min-h-16 w-full resize-y rounded-xl bg-foreground/[0.04] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:bg-foreground/[0.06] focus:ring-2 focus:ring-[#0d99ff]/40 ${INSET_SOFT}`}
       />
-      <p className="text-[10px] text-muted-foreground/50 mt-1">⌘ + Enter to apply</p>
-    </Section>
+      <p className="text-[10px] text-muted-foreground/50">⌘ + Enter to apply</p>
+    </div>
   );
 }

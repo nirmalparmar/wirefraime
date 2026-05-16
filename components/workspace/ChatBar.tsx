@@ -231,40 +231,45 @@ export function ChatBar() {
   return (
     <>
       {expanded && (
-        <div
-          className="absolute left-4 top-18 z-20 flex max-h-[calc(100%-140px)] w-[300px] flex-col overflow-hidden rounded-2xl border border-border bg-background/80 shadow-2xl backdrop-blur-2xl"
-        >
+        <div className="absolute left-4 top-[68px] z-20 flex max-h-[calc(100%-180px)] w-[320px] flex-col overflow-hidden rounded-3xl bg-card shadow-[var(--ws-soft-lg)]">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-            <div className="flex items-center gap-2">
-              {isActive && (
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              {isActive ? (
                 <span className="flex items-center gap-1">
-                  <span className="size-1.5 animate-pulse rounded-full bg-blue-400" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-blue-400 [animation-delay:150ms]" />
-                  <span className="size-1.5 animate-pulse rounded-full bg-blue-400 [animation-delay:300ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-[#0d99ff]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-[#0d99ff] [animation-delay:150ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-[#0d99ff] [animation-delay:300ms]" />
                 </span>
+              ) : (
+                <span aria-hidden className="size-1.5 rounded-full bg-emerald-500" />
               )}
-              <span className="text-[12px] font-medium text-muted-foreground">
-                {isActive ? "Agent working..." : "Agent"}
+              <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                {isActive ? "Agent working" : "Agent"}
               </span>
             </div>
             <button
               onClick={() => setExpanded(false)}
-              className="grid size-6 place-items-center rounded-md text-foreground/30 transition-colors hover:bg-foreground/10 hover:text-foreground/60"
+              className="grid size-7 place-items-center rounded-full bg-foreground/[0.04] text-muted-foreground/70 transition hover:text-foreground shadow-[var(--ws-raised)]"
+              aria-label="Collapse"
             >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
                 <path d="M3 3l6 6M9 3l-6 6" />
               </svg>
             </button>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto scrollbar-none px-4 py-3 space-y-3">
+          <div className="flex-1 space-y-3 overflow-y-auto scrollbar-none px-4 py-3.5">
             {app.messages.map((msg, i) => (
               <ChatMessage
                 key={msg.id}
                 msg={msg}
-                isLive={(isSending || isGenerating) && msg.role === "assistant" && i === app.messages.length - 1}
+                isLive={
+                  (isSending || isGenerating) &&
+                  msg.role === "assistant" &&
+                  i === app.messages.length - 1
+                }
               />
             ))}
             <div ref={messagesEndRef} />
@@ -275,21 +280,22 @@ export function ChatBar() {
       {!expanded && (
         <button
           onClick={() => setExpanded(true)}
-          className="absolute bottom-20 left-4 z-30 flex items-center gap-2 rounded-xl border border-border bg-background/80 px-3 py-2.5 shadow-2xl backdrop-blur-2xl transition-colors hover:bg-background/90"
+          className="absolute bottom-24 left-4 z-30 flex items-center gap-2 rounded-full bg-card py-2 pl-2.5 pr-4 shadow-[var(--ws-soft)] transition hover:translate-y-[-1px] hover:shadow-[var(--ws-soft-lg)]"
         >
-          {isActive && (
+          {isActive ? (
             <span className="flex items-center gap-0.5">
-              <span className="size-1.5 animate-pulse rounded-full bg-blue-400" />
-              <span className="size-1.5 animate-pulse rounded-full bg-blue-400 [animation-delay:150ms]" />
-              <span className="size-1.5 animate-pulse rounded-full bg-blue-400 [animation-delay:300ms]" />
+              <span className="size-1.5 animate-pulse rounded-full bg-[#0d99ff]" />
+              <span className="size-1.5 animate-pulse rounded-full bg-[#0d99ff] [animation-delay:150ms]" />
+              <span className="size-1.5 animate-pulse rounded-full bg-[#0d99ff] [animation-delay:300ms]" />
             </span>
-          )}
-          {!isActive && (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           )}
-          <span className="text-[12px] font-medium text-muted-foreground">Agent log</span>
+          <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            Agent log
+          </span>
         </button>
       )}
     </>

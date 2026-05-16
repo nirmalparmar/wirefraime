@@ -393,12 +393,16 @@ export function FloatingInput({
 
   return (
     <div className="absolute bottom-5 left-1/2 z-30 w-full max-w-[680px] -translate-x-1/2 px-4">
-      <div className={`overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-2xl transition-all ${inputFocused ? "border-ring/30 bg-background/95 shadow-[0_8px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.4)]" : "border-border bg-background/80 shadow-[0_4px_24px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.3)]"}`}>
+      <div
+        className={`overflow-hidden rounded-3xl bg-card transition-all ${
+          inputFocused ? "shadow-[var(--ws-soft-lg)]" : "shadow-[var(--ws-soft)]"
+        }`}
+      >
         {/* Screen context chip + selected element chip */}
         {(activeScreen || selectedElement || imageData) && (
           <div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-3">
             {activeScreen && (
-              <div className="flex items-center gap-1.5 rounded-full bg-foreground/[0.05] px-2.5 py-1 text-[11px] text-foreground/80 ring-1 ring-border">
+              <div className="flex items-center gap-1.5 rounded-full bg-foreground/[0.05] px-2.5 py-1 text-[11px] text-foreground/80 shadow-[var(--ws-inset)]">
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none" className="shrink-0 text-muted-foreground">
                   <rect x="1.5" y="2" width="9" height="6.5" rx="1.5" stroke="currentColor" strokeWidth="1.1" />
                   <path d="M4.5 10.5h3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
@@ -413,7 +417,7 @@ export function FloatingInput({
               </div>
             )}
             {selectedElement && (
-              <div className="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-1 text-[11px] text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/20">
+              <div className="flex items-center gap-1.5 rounded-full bg-[#0d99ff]/10 px-2.5 py-1 text-[11px] text-[#0d99ff] shadow-[var(--ws-inset)]">
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="shrink-0">
                   <rect x="1" y="1" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="1.2" fill="none" />
                 </svg>
@@ -422,7 +426,7 @@ export function FloatingInput({
                 </span>
                 <button
                   onClick={() => dispatch({ type: "SELECT_ELEMENT", element: null })}
-                  className="grid size-3.5 shrink-0 place-items-center rounded-full text-blue-500/60 transition-colors hover:text-blue-600 dark:hover:text-blue-400"
+                  className="grid size-3.5 shrink-0 place-items-center rounded-full text-[#0d99ff]/60 transition-colors hover:text-[#0d99ff]"
                 >
                   <svg width="7" height="7" viewBox="0 0 8 8"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
                 </button>
@@ -506,21 +510,26 @@ export function FloatingInput({
 
             {isActive ? (
               <button
-                className="grid size-8 shrink-0 place-items-center rounded-xl bg-foreground text-background shadow-sm transition-all hover:opacity-80"
+                className="grid size-8 shrink-0 place-items-center rounded-full bg-foreground text-background shadow-[var(--ws-raised)] transition-all hover:-translate-y-px hover:opacity-90"
                 onClick={handleStop}
                 title="Stop"
               >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="currentColor">
                   <rect x="1" y="1" width="10" height="10" rx="2" />
                 </svg>
               </button>
             ) : (
               <button
-                className={`grid size-8 shrink-0 place-items-center rounded-xl transition-all ${canSend ? "bg-foreground text-background shadow-sm hover:opacity-80" : "text-foreground/15"}`}
+                className={`grid size-8 shrink-0 place-items-center rounded-full transition-all ${
+                  canSend
+                    ? "bg-foreground text-background shadow-[var(--ws-raised)] hover:-translate-y-px hover:opacity-90"
+                    : "text-foreground/15"
+                }`}
                 onClick={handleSend}
                 disabled={!canSend}
+                title="Send"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                   <path d="M8 13V3M4 7l4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>

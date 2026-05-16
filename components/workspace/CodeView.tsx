@@ -175,30 +175,33 @@ export function CodeView({ onClose }: { onClose: () => void }) {
 
   if (!activeScreen) {
     return (
-      <div className="absolute inset-y-0 right-0 z-40 flex w-1/2 items-center justify-center border-l border-border bg-muted">
+      <div className="absolute inset-y-0 right-0 z-40 flex w-1/2 items-center justify-center border-l border-foreground/8 bg-card">
         <span className="text-sm text-muted-foreground">No screen selected</span>
       </div>
     );
   }
 
   return (
-    <div className="absolute inset-y-0 right-0 z-40 flex w-1/2 flex-col border-l border-border bg-card shadow-2xl animate-in slide-in-from-right duration-200">
+    <div className="absolute inset-y-4 right-4 z-40 flex w-[calc(50%-1rem)] flex-col overflow-hidden rounded-3xl border border-foreground/8 bg-background/85 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.35)] backdrop-blur-2xl animate-in slide-in-from-right-4 duration-200">
       {/* Header */}
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-4">
-        <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
-            <path d="M9 3.5L12 7l-3 3.5" />
-            <path d="M5 3.5L2 7l3 3.5" />
-          </svg>
-          <span className="text-xs font-medium text-foreground/80">{activeScreen.name}</span>
-          <span className="text-[10px] text-muted-foreground/50">HTML</span>
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-foreground/8 px-5">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+            Code
+          </span>
+          <span className="text-[12px] font-medium text-foreground/85">
+            {activeScreen.name}
+          </span>
+          <span className="rounded-md bg-foreground/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+            HTML
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleCopy}
-            className="h-7 gap-1.5 px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="h-7 gap-1.5 rounded-full px-3 text-[11px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
           >
             {copied ? (
               <>
@@ -217,22 +220,21 @@ export function CodeView({ onClose }: { onClose: () => void }) {
               </>
             )}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
+          <button
             onClick={onClose}
-            className="text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Close"
+            className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
               <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" />
             </svg>
-          </Button>
+          </button>
         </div>
       </div>
 
       {/* Code area */}
-      <div className="flex-1 overflow-auto">
-        <pre className="min-w-0 p-4 text-[12px] leading-5 font-mono">
+      <div className="flex-1 overflow-auto bg-foreground/[0.02]">
+        <pre className="min-w-0 p-5 font-mono text-[12px] leading-5">
           <code>
             {tokenizedLines.map((tokens, lineIdx) => (
               <div key={lineIdx} className="flex">

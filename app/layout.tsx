@@ -18,10 +18,55 @@ const instrumentSerif = Instrument_Serif({
   style: ["normal", "italic"],
 });
 
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
+  "https://wirefraime.com";
+
 export const metadata: Metadata = {
-  title: "Wirefraime — Full App Design, End-to-End",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Wirefraime — AI Wireframe & UI Design Tool",
+    template: "%s — Wirefraime",
+  },
   description:
-    "Describe your app once. Wirefraime's AI understands your product and generates every screen, every flow, every edge case — fully designed in seconds.",
+    "Wirefraime is the AI wireframe tool that turns a prompt into a full UI design — every screen, every state, every flow. Your AI UI designer.",
+  applicationName: "Wirefraime",
+  keywords: [
+    "wireframe",
+    "wireframe tool",
+    "wireframe tools",
+    "AI wireframe",
+    "AI wireframe tool",
+    "wireframe mockup",
+    "wireframe mock up",
+    "AI UI design",
+    "UI designer",
+    "AI UI designer",
+    "UI design tool",
+    "UI mockup generator",
+    "AI design tool",
+    "AI app design",
+    "design system generator",
+    "Wirefraime",
+  ],
+  authors: [{ name: "Wirefraime" }],
+  creator: "Wirefraime",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    title: "Wirefraime — AI Wireframe & UI Design Tool",
+    description:
+      "AI wireframe tool that turns a prompt into a full UI design. Generate wireframes, mockups, and every screen of your app — in seconds.",
+    siteName: "Wirefraime",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Wirefraime — AI Wireframe & UI Design Tool",
+    description:
+      "AI wireframe tool that turns a prompt into a full UI design. Wireframes, mockups, every screen — in seconds.",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({

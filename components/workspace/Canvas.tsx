@@ -88,7 +88,7 @@ type ScreenNodeData = {
   contentHeight: number;
   genStep?: string;
   onElementSelected: (el: SelectedElement | null) => void;
-  onHtmlUpdated: (html: string) => void;
+  onHtmlUpdated: (html: string, editKey?: string | null) => void;
   onIframeMount: (el: HTMLIFrameElement | null) => void;
   onContentHeight: (height: number) => void;
 };
@@ -244,21 +244,45 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
 
 const nodeTypes = { screen: ScreenNodeComponent };
 
+/* ── Wheel input shape (shared by bridge postMessage + window forwarder) ── */
+export interface WheelInput {
+  deltaX: number;
+  deltaY: number;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  clientX: number; // PAGE-space cursor X
+  clientY: number; // PAGE-space cursor Y
+}
+
 /* ── Props ── */
 interface CanvasProps {
   streamChunks: Map<string, string[]>;
   streamTick: number;
   onIframeRef: (el: HTMLIFrameElement | null) => void;
+  /** Exposed so external buttons (e.g. CanvasActions) can refit the viewport. */
+  fitViewRef?: React.MutableRefObject<(() => void) | null>;
+  /** Exposed so the workspace-level wheel handler can drive pan/zoom from
+   *  events that don't originate inside the React Flow pane. */
+  applyWheelRef?: React.MutableRefObject<((w: WheelInput) => void) | null>;
 }
 
 /* ── Inner canvas (inside ReactFlowProvider) ── */
-function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
+function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyWheelRef }: CanvasProps) {
   const { state, dispatch } = useWorkspace();
   const { app, isGenerating, genStep, activeScreenId } = state;
   const { theme } = useTheme();
-  const { fitView } = useReactFlow();
+  const { fitView, setViewport, getViewport } = useReactFlow();
   const iframeMapRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
   const [contentHeights, setContentHeights] = useState<Map<string, number>>(new Map());
+
+  // Expose fitView to parent (CanvasActions "Fit to view" button)
+  useEffect(() => {
+    if (!fitViewRef) return;
+    fitViewRef.current = () => {
+      try { fitView({ padding: 0.15, duration: 400 }); } catch { /* unmounted */ }
+    };
+    return () => { if (fitViewRef) fitViewRef.current = null; };
+  }, [fitView, fitViewRef]);
 
   const vp = VIEWPORTS[app.platform ?? "web"];
   const CANVAS_W = vp.w;
@@ -297,7 +321,40 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
     });
   }, [app.designSystem]);
 
-  /* Forward IFRAME_WHEEL messages to React Flow for canvas pan/zoom */
+  /* Single source of truth for wheel-based pan/zoom. Called by:
+     - iframe bridge postMessage forwarder (cursor inside iframe content)
+     - workspace-level window wheel handler (cursor over floating UI)
+     React Flow handles wheel over its own pane natively. */
+  const applyWheel = useCallback((w: WheelInput) => {
+    const v = getViewport();
+    if (w.ctrlKey || w.metaKey) {
+      // Cursor-anchored zoom. Trackpad pinch fires small deltaY repeatedly;
+      // mouse-wheel-with-ctrl fires deltaY of ~100 per tick. The exp() factor
+      // gives smooth zoom in both cases.
+      const factor = Math.exp(-w.deltaY * 0.01);
+      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom * factor));
+      const k = nextZoom / v.zoom;
+      const nx = w.clientX - (w.clientX - v.x) * k;
+      const ny = w.clientY - (w.clientY - v.y) * k;
+      setViewport({ x: nx, y: ny, zoom: nextZoom });
+    } else {
+      setViewport({
+        x: v.x - w.deltaX * PAN_ON_SCROLL_SPEED,
+        y: v.y - w.deltaY * PAN_ON_SCROLL_SPEED,
+        zoom: v.zoom,
+      });
+    }
+  }, [getViewport, setViewport]);
+
+  // Expose for workspace-level wheel handler
+  useEffect(() => {
+    if (!applyWheelRef) return;
+    applyWheelRef.current = applyWheel;
+    return () => { if (applyWheelRef) applyWheelRef.current = null; };
+  }, [applyWheel, applyWheelRef]);
+
+  /* IFRAME_WHEEL — bridge forwards wheel events from inside iframes. Convert
+     iframe-relative cursor coords to page-relative, then apply. */
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       if (!e.data || e.data.type !== "IFRAME_WHEEL") return;
@@ -306,28 +363,19 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
       );
       if (!sourceIframe) return;
 
-      const flowRoot = sourceIframe.closest(".react-flow");
-      const target = flowRoot?.querySelector<HTMLElement>(".react-flow__renderer");
-      if (!target) return;
-
       const rect = sourceIframe.getBoundingClientRect();
-      target.dispatchEvent(new WheelEvent("wheel", {
-        bubbles: true,
-        cancelable: true,
-        deltaX: e.data.deltaX ?? 0,
-        deltaY: e.data.deltaY ?? 0,
-        deltaMode: e.data.deltaMode ?? 0,
-        shiftKey: e.data.shiftKey,
-        ctrlKey: e.data.ctrlKey,
-        altKey: e.data.altKey,
-        metaKey: e.data.metaKey,
+      applyWheel({
+        deltaX: (e.data.deltaX ?? 0) as number,
+        deltaY: (e.data.deltaY ?? 0) as number,
+        ctrlKey: !!e.data.ctrlKey,
+        metaKey: !!e.data.metaKey,
         clientX: rect.left + (e.data.clientX ?? 0),
         clientY: rect.top + (e.data.clientY ?? 0),
-      }));
+      });
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [applyWheel]);
 
   const handleElementSelected = useCallback(
     (screenId: string, element: SelectedElement | null) => {
@@ -339,8 +387,14 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
   );
 
   const handleHtmlUpdated = useCallback(
-    (screenId: string, html: string) => {
-      dispatch({ type: "UPDATE_SCREEN_HTML", screenId, html, pushUndo: true });
+    (screenId: string, html: string, editKey?: string | null) => {
+      dispatch({
+        type: "UPDATE_SCREEN_HTML",
+        screenId,
+        html,
+        pushUndo: true,
+        editKey: editKey ?? `${screenId}:edit`,
+      });
     },
     [dispatch]
   );
@@ -399,7 +453,7 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
           vpH: CANVAS_H,
           contentHeight: ch ?? 0,
           onElementSelected: (el) => handleElementSelected(screen.id, el),
-          onHtmlUpdated: (html) => handleHtmlUpdated(screen.id, html),
+          onHtmlUpdated: (html, editKey) => handleHtmlUpdated(screen.id, html, editKey),
           onIframeMount: (el) => handleIframeMount(screen.id, el),
           onContentHeight: (h) => handleContentHeight(screen.id, h),
         },
@@ -441,26 +495,64 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
   }, [app.screens, activeScreenId, streamChunks, streamTick, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight]);
 
   /* Auto-fit so the viewport always tracks newly generated screens.
-     Triggers on each screen add during generation + once more when generation
-     completes. Without this, the canvas can drift (e.g. iframe wheel pans)
-     and screens end up off-viewport even though they exist in state. */
+     Fires when (a) screen count grows, or (b) generation transitions from
+     true → false. Without this, the canvas can drift (iframe wheel forwarder
+     pans during streaming) and screens end up off-viewport even though they
+     exist in state — looking like "screens disappeared." */
   const lastFitCountRef = useRef(0);
+  const wasGeneratingRef = useRef(false);
   useEffect(() => {
     const count = app.screens.length;
+
     if (count === 0) {
       lastFitCountRef.current = 0;
+      wasGeneratingRef.current = isGenerating;
       return;
     }
-    const grew = count > lastFitCountRef.current;
-    const finishingUp = !isGenerating && lastFitCountRef.current !== count;
-    if (!grew && !finishingUp) return;
 
+    const grew = count > lastFitCountRef.current;
+    const justFinished = wasGeneratingRef.current && !isGenerating;
+    wasGeneratingRef.current = isGenerating;
+
+    if (!grew && !justFinished) return;
     lastFitCountRef.current = count;
+
+    // Slightly longer delay on "just finished" so the final iframe has time
+    // to swap from doc.write streaming to srcdoc before we measure layout.
+    const delay = justFinished ? 400 : 220;
     const t = setTimeout(() => {
       try { fitView({ padding: 0.15, duration: 500 }); } catch { /* unmounted */ }
-    }, 250);
+    }, delay);
     return () => clearTimeout(t);
   }, [app.screens.length, isGenerating, fitView]);
+
+  /* Refit when iframe layout shifts post-load.
+     Initial fitView uses default 900px per screen — once iframes load and
+     report real heights, rows shift and some screens land off-viewport.
+     Only applies during the first 8s after mount so we don't fight user
+     interaction later in the session. Debounced 600ms. */
+  const layoutHashRef = useRef("");
+  const mountedAtRef = useRef(Date.now());
+  useEffect(() => {
+    if (isGenerating) return; // generation's own fit handles this case
+    if (app.screens.length === 0) return;
+    if (Date.now() - mountedAtRef.current > 8000) return;
+
+    const hash = app.screens
+      .map((s) => `${s.id}:${contentHeights.get(s.id) ?? 0}`)
+      .join("|");
+    if (hash === layoutHashRef.current) return;
+    const isFirstHash = layoutHashRef.current === "";
+    layoutHashRef.current = hash;
+
+    // Skip the very first hash — the count-grew effect already schedules a fit.
+    if (isFirstHash) return;
+
+    const t = setTimeout(() => {
+      try { fitView({ padding: 0.15, duration: 400 }); } catch { /* unmounted */ }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [contentHeights, app.screens, isGenerating, fitView]);
 
   return (
     <div className="h-full w-full overflow-hidden">
@@ -497,47 +589,37 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef }: CanvasProps) {
 
       {/* Generating overlay — shown when generating and no screens yet */}
       {isGenerating && app.screens.length === 0 && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10 }}>
-          <div style={{
-            textAlign: "center", padding: "48px 56px", borderRadius: 24, maxWidth: 420,
-            background: "color-mix(in oklch, var(--card) 85%, transparent)",
-            backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-            boxShadow: "var(--shadow-card)",
-          }}>
-            {/* Animated dots */}
-            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 20 }}>
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <div className="pointer-events-auto max-w-md rounded-3xl border border-foreground/8 bg-card/85 px-14 py-12 text-center shadow-[0_20px_60px_-20px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
+            <div className="mb-5 flex justify-center gap-1.5">
               {[0, 1, 2].map((i) => (
-                <div key={i} style={{
-                  width: 8, height: 8, borderRadius: "50%", background: C.wsAccent,
-                  animation: `wfPulse 1.4s ease ${i * 0.2}s infinite`,
-                }} />
+                <span
+                  key={i}
+                  className="size-2 rounded-full bg-[#0d99ff]"
+                  style={{ animation: `wfPulse 1.4s ease ${i * 0.2}s infinite` }}
+                />
               ))}
             </div>
-            <div style={{ fontFamily: SANS, fontSize: 15, color: C.text2, fontWeight: 600, marginBottom: 6, letterSpacing: "-0.01em" }}>
-              {genStep || "Starting generation..."}
+            <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+              {genStep || "Starting generation"}
             </div>
-            <div style={{ fontFamily: SANS, fontSize: 13, color: C.text4, lineHeight: 1.5 }}>
-              Designing your app — this usually takes 30–60 seconds
-            </div>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground/70">
+              Designing your app — this usually takes 30–60 seconds.
+            </p>
           </div>
         </div>
       )}
 
       {/* Empty state overlay */}
       {!isGenerating && app.screens.length === 0 && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{
-            textAlign: "center", padding: "36px 44px", borderRadius: 20,
-            background: "color-mix(in oklch, var(--card) 80%, transparent)",
-            backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-            boxShadow: "var(--shadow-card)",
-          }}>
-            <div style={{ fontFamily: SANS, fontSize: 16, color: C.text3, marginBottom: 6, fontWeight: 500 }}>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="pointer-events-auto max-w-sm rounded-3xl border border-foreground/8 bg-card/80 px-10 py-8 text-center shadow-[0_20px_60px_-20px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+            <div className="text-sm font-medium text-foreground/85">
               {genStep?.startsWith("Error:") ? genStep : "No screens yet"}
             </div>
             {genStep?.startsWith("Error:") && (
-              <p style={{ fontFamily: SANS, fontSize: 12, color: C.text4, marginTop: 4 }}>
-                Use the Regenerate button in the toolbar to try again
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Use the Regenerate button to try again.
               </p>
             )}
           </div>
@@ -555,3 +637,5 @@ export function Canvas(props: CanvasProps) {
     </ReactFlowProvider>
   );
 }
+
+export type FitViewHandle = (() => void) | null;

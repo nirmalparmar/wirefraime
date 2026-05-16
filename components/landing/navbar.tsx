@@ -72,7 +72,7 @@ export function Navbar() {
                 href="/sign-up"
                 className="liquid-glass-adaptive rounded-full px-5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
               >
-                Start for free
+                Get Started
               </Link>
             </>
           ) : (

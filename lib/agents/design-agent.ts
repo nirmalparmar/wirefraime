@@ -251,6 +251,17 @@ FORBIDDEN (these make the output unusable):
   - Inline style="background:..." (always use Tailwind utilities)
   - Custom <style> blocks that redefine component look (breaks the design system)
   - Lorem ipsum content (use realistic names, numbers, dates)
+
+EDITABILITY RULES (so users can click + edit in the live editor):
+  - Use SEMANTIC HTML: <header>, <main>, <section>, <article>, <nav>, <aside>, <button>, <a>
+    Never a <div role="button"> when <button> works.
+  - Avoid unnecessary wrapper divs. If a container has no class/style/event of its own,
+    inline its children into the parent.
+  - Keep nesting shallow: aim for 4–5 levels max from <body> to a leaf button/text.
+  - Cards/list-items should be a SINGLE element with all styling — not a card-div wrapping
+    a content-div wrapping a header-div wrapping a title-span.
+  - Add data-wf-name attributes to top-level structural blocks ONLY when they aren't already
+    obvious from semantics — e.g. <section data-wf-name="hero">.
 `;
 
 // ── Agents (lazy-initialized with skill) ──────────────────────
