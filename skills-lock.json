@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "billing-sdk": {
+      "source": "dodopayments/skills",
+      "sourceType": "github",
+      "skillPath": "dodo-payments/billing-sdk/SKILL.md",
+      "computedHash": "38ba24500996f9bbc33e61a757a583f57cc2f7af3b8dfe57bc684b1ec7b9fbb5"
+    },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",

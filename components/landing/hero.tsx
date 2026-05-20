@@ -45,7 +45,7 @@ function Selected({ children }: { children: ReactNode }) {
       {/* Solid blue outline */}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[6px] border-[2px] border-[#0d99ff]"
+        className="pointer-events-none absolute inset-0 rounded-[6px] border-2 border-[#0d99ff]"
       />
 
       {/* Corner handles */}

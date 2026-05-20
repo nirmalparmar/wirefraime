@@ -165,3 +165,121 @@ export async function* streamWithGemini(
     if (text) yield text;
   }
 }
+
+/**
+ * OpenRouter streaming via Chat Completions SSE.
+ *
+ * Used as an alternative streaming backend (e.g. xiaomi/mimo-v2.5-pro) when
+ * OPENROUTER_API_KEY is set + the configured streaming model is an OpenRouter
+ * slug (e.g. "xiaomi/mimo-v2.5-pro").
+ *
+ * Inline images are passed as data: URLs in the content array, matching the
+ * OpenAI-compatible schema OpenRouter supports.
+ */
+export async function* streamWithOpenRouter(
+  systemInstruction: string,
+  prompt: string,
+  opts: {
+    model: string;
+    temperature?: number;
+    maxOutputTokens?: number;
+    image?: { data: string; mimeType: string };
+  }
+): AsyncGenerator<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not set");
+  }
+
+  type UserContent =
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } };
+  const userContent: UserContent[] = [{ type: "text", text: prompt }];
+  if (opts.image) {
+    userContent.push({
+      type: "image_url",
+      image_url: { url: `data:${opts.image.mimeType};base64,${opts.image.data}` },
+    });
+  }
+
+  const body = {
+    model: opts.model,
+    stream: true,
+    temperature: opts.temperature ?? 0.7,
+    max_tokens: opts.maxOutputTokens ?? 8192,
+    messages: [
+      { role: "system", content: systemInstruction },
+      { role: "user", content: userContent },
+    ],
+  };
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://wirefraime.app",
+      "X-Title": "Wirefraime",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok || !res.body) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(`OpenRouter ${res.status}: ${txt.slice(0, 200)}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames separated by \n\n
+    let idx: number;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      for (const line of frame.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") return;
+        try {
+          const parsed = JSON.parse(data);
+          const delta = parsed?.choices?.[0]?.delta?.content;
+          if (typeof delta === "string" && delta) yield delta;
+        } catch {
+          // Some providers send keep-alive or comment frames — ignore
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Provider-agnostic streaming. Picks OpenRouter if the model slug looks like
+ * an OpenRouter route (vendor/model), otherwise falls back to Gemini.
+ *
+ * This is the entry point design-agent should use for HTML generation so
+ * swapping models is a one-line config change.
+ */
+export async function* streamDesign(
+  systemInstruction: string,
+  prompt: string,
+  opts: {
+    model: string;
+    temperature?: number;
+    maxOutputTokens?: number;
+    image?: { data: string; mimeType: string };
+  }
+): AsyncGenerator<string> {
+  const isOpenRouter = opts.model.includes("/") && !opts.model.startsWith("gemini-");
+  if (isOpenRouter) {
+    yield* streamWithOpenRouter(systemInstruction, prompt, opts);
+  } else {
+    yield* streamWithGemini(systemInstruction, prompt, opts);
+  }
+}

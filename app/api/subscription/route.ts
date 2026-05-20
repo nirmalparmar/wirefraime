@@ -5,6 +5,12 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { PLAN_LIMITS, type PlanId } from "@/lib/payments/dodo";
 
+/**
+ * GET /api/subscription
+ * Returns only what we own: plan + usage from our DB.
+ * Billing details (renewal date, payment methods, invoices, cancellation) are
+ * handled by Dodo's customer portal — see /api/customer-portal.
+ */
 export async function GET() {
   const { userId } = await auth();
   if (!userId) {
@@ -19,12 +25,11 @@ export async function GET() {
     const planId = (row?.plan ?? "free") as PlanId;
     const limits = PLAN_LIMITS[planId] ?? PLAN_LIMITS.free;
 
-    // Check if usage needs monthly reset
+    // Monthly usage reset
     let screensUsed = row?.screensUsed ?? 0;
     if (row?.usageResetAt) {
       const resetAt = new Date(row.usageResetAt);
       const now = new Date();
-      // If we've crossed into a new month since last reset, zero the counter
       if (now.getMonth() !== resetAt.getMonth() || now.getFullYear() !== resetAt.getFullYear()) {
         screensUsed = 0;
         await db

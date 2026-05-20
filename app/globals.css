@@ -347,9 +347,9 @@ body {
   /* #f0eeea */
   --muted-foreground: oklch(0.40 0.007 80);
   /* darker warm gray — readable on light bg */
-  --accent: oklch(0.94 0.005 80);
+  --accent: oklch(29.22% 0.0156 264.30);
+  --accent-foreground: oklch(99.11% 0 0);
   /* #eeecea */
-  --accent-foreground: oklch(0.11 0.003 80);
   --destructive: oklch(0.55 0.22 25);
   /* #cc3333 */
   --border: oklch(0 0 0 / 7%);
@@ -405,9 +405,8 @@ body {
   --muted: oklch(0.26 0.005 260);
   --muted-foreground: oklch(0.78 0.003 260);
   /* #b8b8be — clearly visible */
-  --accent: oklch(0.28 0.005 260);
-  /* #383845 hover surface */
-  --accent-foreground: oklch(0.96 0.002 260);
+  --accent: oklch(29.22% 0.0156 264.30);
+  --accent-foreground: oklch(99.11% 0 0);
   --destructive: oklch(0.65 0.18 25);
   /* #e85555 */
   --border: oklch(1 0 0 / 16%);

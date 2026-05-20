@@ -285,6 +285,7 @@ function WorkspaceShell() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const fitViewRef = useRef<(() => void) | null>(null);
   const applyWheelRef = useRef<((w: WheelInput) => void) | null>(null);
+  const focusScreenRef = useRef<((screenId: string) => void) | null>(null);
   const streamChunksRef = useRef<Map<string, string[]>>(new Map());
   const [streamTick, setStreamTick] = useState(0);
   const forceUpdate = useCallback(() => setStreamTick((t) => t + 1), []);
@@ -297,6 +298,10 @@ function WorkspaceShell() {
 
   const handleFitView = useCallback(() => {
     fitViewRef.current?.();
+  }, []);
+
+  const handleFocusScreen = useCallback((id: string) => {
+    focusScreenRef.current?.(id);
   }, []);
 
   /* Lazy-load screen HTML from S3 — watches state so any screen with metadata
@@ -464,10 +469,11 @@ function WorkspaceShell() {
         onIframeRef={handleIframeRef}
         fitViewRef={fitViewRef}
         applyWheelRef={applyWheelRef}
+        focusScreenRef={focusScreenRef}
       />
 
-      {/* Floating top bar — app name */}
-      <Toolbar />
+      {/* Floating top bar — app name + screen jump */}
+      <Toolbar onFocusScreen={handleFocusScreen} />
 
       {/* Floating left panel — glass chat/reasoning overlay */}
       <ChatBar />

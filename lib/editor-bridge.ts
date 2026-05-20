@@ -316,32 +316,42 @@ export const EDITOR_BRIDGE_SCRIPT = `
   window.addEventListener('message', function(e) {
     if (!e.data || !e.data.type) return;
 
-    // Live design-system CSS variable update
+    // Live design-system CSS variable update. We write to BOTH:
+    //   1. documentElement.style (instant — wins specificity battles)
+    //   2. A persistent <style id="ds-live-override"> that survives serialization
+    //      so getCleanHtml() captures the latest state without HTML rewrites.
     if (e.data.type === 'UPDATE_CSS_VARS') {
       var vars = e.data.vars;
       for (var key in vars) document.documentElement.style.setProperty(key, vars[key]);
-      if (e.data.bodyFont) {
-        var override = document.getElementById('__ds_font_override');
-        if (!override) {
-          override = document.createElement('style');
-          override.id = '__ds_font_override';
-          override.setAttribute('data-wf-bridge', ''); // stripped on save
-          (document.head || document.documentElement).appendChild(override);
-        }
-        override.textContent = '*:not(code):not(pre):not(.mono){font-family:' + e.data.bodyFont + ' !important;}';
 
+      // Build a persistent <style> tag — NOT marked data-wf-bridge so it's kept on save.
+      var persisted = document.getElementById('ds-live-override');
+      if (!persisted) {
+        persisted = document.createElement('style');
+        persisted.id = 'ds-live-override';
+        (document.head || document.documentElement).appendChild(persisted);
+      }
+      var rootCss = ':root{';
+      for (var k in vars) rootCss += k + ':' + vars[k] + ';';
+      rootCss += '}';
+      var fontCss = '';
+      if (e.data.bodyFont) {
+        fontCss = 'body,html{font-family:' + e.data.bodyFont + ' !important;}*:not(code):not(pre):not(.mono){font-family:' + e.data.bodyFont + ' !important;}';
+      }
+      persisted.textContent = rootCss + fontCss;
+
+      if (e.data.bodyFont) {
         var fontName = e.data.bodyFont.split(',')[0].trim();
         var encoded = encodeURIComponent(fontName);
         var fontUrl = 'https://fonts.googleapis.com/css2?family=' + encoded + ':wght@300;400;500;600;700&display=swap';
-        var existing = document.getElementById('__ds_font_link');
+        var existing = document.getElementById('ds-live-font-link');
         if (existing) {
           existing.setAttribute('href', fontUrl);
         } else {
           var link = document.createElement('link');
-          link.id = '__ds_font_link';
+          link.id = 'ds-live-font-link';
           link.rel = 'stylesheet';
           link.href = fontUrl;
-          link.setAttribute('data-wf-bridge', ''); // stripped on save
           (document.head || document.documentElement).appendChild(link);
         }
       }
@@ -352,6 +362,14 @@ export const EDITOR_BRIDGE_SCRIPT = `
     if (e.data.type === 'RESTORE_SELECTION') {
       selectedXPath = e.data.xpath || null;
       reSelectFromXPath();
+      return;
+    }
+
+    // Capture current HTML (with live CSS-var/font state applied). Used by the
+    // Design System panel close so we persist the latest visual state without
+    // having to rewrite HTML in the reducer (which would reload the iframe).
+    if (e.data.type === 'EMIT_HTML') {
+      emitHtmlUpdated(e.data.editKey || 'ds-sync');
       return;
     }
 

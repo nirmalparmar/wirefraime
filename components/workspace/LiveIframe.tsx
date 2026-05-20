@@ -4,17 +4,36 @@ import { useRef, useEffect, useCallback } from "react";
 import { EDITOR_BRIDGE_SCRIPT } from "@/lib/editor-bridge";
 import type { SelectedElement } from "@/lib/store/use-workspace";
 
-/* Wheel forwarder for the early streaming phase — full bridge isn't injected yet. */
+/* Lightweight script injected at the start of streaming. Forwards wheel
+   events AND reports content height as the iframe fills in — so the parent
+   knows when real content has started rendering and can hide the shimmer. */
 const WHEEL_FORWARDER_SCRIPT = `<script>
-document.addEventListener('wheel', function(e) {
-  e.preventDefault();
-  window.parent.postMessage({
-    type: 'IFRAME_WHEEL',
-    deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode,
-    shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey,
-    clientX: e.clientX, clientY: e.clientY,
-  }, '*');
-}, { passive: false });
+(function(){
+  document.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    window.parent.postMessage({
+      type: 'IFRAME_WHEEL',
+      deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode,
+      shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey,
+      clientX: e.clientX, clientY: e.clientY,
+    }, '*');
+  }, { passive: false });
+
+  var lastH = 0;
+  function reportH(){
+    var h = Math.max(
+      document.documentElement && document.documentElement.scrollHeight || 0,
+      document.body && document.body.scrollHeight || 0
+    );
+    if (h > 0 && Math.abs(h - lastH) >= 8) {
+      lastH = h;
+      window.parent.postMessage({ type: 'CONTENT_HEIGHT', height: h }, '*');
+    }
+  }
+  // Poll a few times per second during stream — cheap, bounded, and our
+  // sole height signal until the full editor bridge takes over.
+  setInterval(reportH, 250);
+})();
 <\/script>`;
 
 /* Strip legacy bridge artifacts that may have been baked into screen HTML

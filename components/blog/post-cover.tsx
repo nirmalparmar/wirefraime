@@ -45,6 +45,16 @@ const VARIANTS: Record<string, string> = {
     radial-gradient(at 88% 88%, hsla(20, 82%, 80%, 0.75) 0%, transparent 50%),
     linear-gradient(180deg, #f6efff 0%, #ffe9f0 100%)
   `,
+  // Warm peach → coral → red glow on a creamy base — matches the soft
+  // "ember" gradient mood: bright, light, sunny.
+  ember: `
+    radial-gradient(at 50% 50%, hsla(28, 95%, 78%, 0.95) 0%, transparent 45%),
+    radial-gradient(at 18% 22%, hsla(18, 92%, 70%, 0.85) 0%, transparent 55%),
+    radial-gradient(at 82% 28%, hsla(8, 88%, 65%, 0.85) 0%, transparent 55%),
+    radial-gradient(at 22% 88%, hsla(32, 95%, 72%, 0.85) 0%, transparent 50%),
+    radial-gradient(at 86% 84%, hsla(0, 82%, 64%, 0.75) 0%, transparent 50%),
+    linear-gradient(180deg, #ffe8d6 0%, #ffd3b8 100%)
+  `,
 };
 
 const GRAIN_SVG =
@@ -66,7 +76,7 @@ type Props = {
 
 export function PostCover({ cover, title, category, className = "" }: Props) {
   const background = VARIANTS[cover.variant] ?? VARIANTS.aurora;
-  const isLight = cover.variant === "pastel";
+  const isLight = cover.variant === "pastel" || cover.variant === "ember";
   const headline = coverHeadline(title);
 
   const fgClass = isLight ? "text-zinc-900" : "text-white";

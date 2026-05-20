@@ -98,14 +98,11 @@ export function DesignSystemPanel({
   const { app } = state;
   const ds = app.designSystem;
   const panelRef = useRef<HTMLDivElement>(null);
-  const wasOpenRef = useRef(open);
 
-  useEffect(() => {
-    if (wasOpenRef.current && !open) {
-      dispatch({ type: "SYNC_DS_TO_SCREENS" });
-    }
-    wasOpenRef.current = open;
-  }, [open, dispatch]);
+  /* No SYNC_DS_TO_SCREENS on close anymore — the bridge persists CSS vars +
+     fonts into a <style id="ds-live-override"> tag inside each iframe via the
+     UPDATE_CSS_VARS postMessage. The auto-save effect picks up the change
+     through HTML_UPDATED echoes. No iframe reload, no flicker. */
 
   useEffect(() => {
     if (!open) return;

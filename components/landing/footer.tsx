@@ -15,7 +15,7 @@ export function Footer() {
               Wirefraime
             </Link>
             <p className="max-w-[280px] text-sm leading-relaxed text-muted-foreground">
-              AI-powered full app design — every screen, every flow, every edge
+              AI-powered wireframe and UI design tool for all your use case.
               case.
             </p>
           </div>

@@ -20,44 +20,77 @@ import { LiveIframe } from "./LiveIframe";
 import { SERIF, SANS, C, VIEWPORTS } from "@/lib/constants";
 import type { SelectedElement } from "@/lib/store/use-workspace";
 
-/* ── PNG export helper ── */
+/* ── PNG export ──
+   Uses `modern-screenshot` (maintained fork of dom-to-image). It explicitly
+   handles cross-origin stylesheets by fetching their text rather than reading
+   `cssRules`, which is what made `html-to-image` crash with SecurityError on
+   Google Fonts / external CDNs. */
 async function exportScreenPng(html: string, vpW: number, screenName: string) {
-  const slug = screenName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const slug = screenName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "screen";
 
-  // Create a hidden iframe to render the HTML at full resolution
   const iframe = document.createElement("iframe");
   iframe.style.cssText = `position:fixed;left:-9999px;top:0;width:${vpW}px;height:100vh;border:none;opacity:0;pointer-events:none;`;
   document.body.appendChild(iframe);
 
   try {
-    await new Promise<void>((resolve) => {
+    // 1. Render the HTML in a hidden iframe
+    await new Promise<void>((resolve, reject) => {
       iframe.onload = () => resolve();
+      iframe.onerror = () => reject(new Error("iframe failed to load"));
       iframe.srcdoc = html;
     });
 
-    // Wait for images / fonts to settle
-    await new Promise((r) => setTimeout(r, 500));
-
     const doc = iframe.contentDocument;
-    if (!doc?.body) throw new Error("Failed to render screen");
+    if (!doc?.body) throw new Error("iframe document not ready");
 
-    // Measure actual content height
-    const contentH = doc.documentElement.scrollHeight;
+    // 2. Wait for fonts + images
+    try { await doc.fonts?.ready; } catch { /* fonts API missing */ }
+    const imgs = Array.from(doc.images).filter((i) => !i.complete);
+    if (imgs.length) {
+      await Promise.all(
+        imgs.map(
+          (img) =>
+            new Promise<void>((r) => {
+              const done = () => r();
+              img.addEventListener("load", done, { once: true });
+              img.addEventListener("error", done, { once: true });
+              setTimeout(done, 3000); // hard cap so a broken image can't stall us
+            })
+        )
+      );
+    }
+    await new Promise((r) => setTimeout(r, 150));
+
+    // 3. Measure real content height
+    const contentH = Math.max(
+      doc.documentElement.scrollHeight,
+      doc.body.scrollHeight,
+      doc.body.offsetHeight
+    );
     iframe.style.height = `${contentH}px`;
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 80));
 
-    const { toPng } = await import("html-to-image");
-    const dataUrl = await toPng(doc.documentElement, {
+    // 4. Render to PNG. `modern-screenshot` reads cross-origin stylesheets
+    //    via fetch, not cssRules — no SecurityError.
+    const { domToPng } = await import("modern-screenshot");
+    const dataUrl = await domToPng(doc.documentElement, {
       width: vpW,
       height: contentH,
-      pixelRatio: 2,
-      cacheBust: true,
+      scale: 2,
+      backgroundColor: getComputedStyle(doc.body).backgroundColor || "#ffffff",
     });
 
+    if (!dataUrl || !dataUrl.startsWith("data:image/")) {
+      throw new Error("export produced empty image");
+    }
+
+    // 5. Trigger download
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = `${slug}.png`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
   } finally {
     document.body.removeChild(iframe);
   }
@@ -144,30 +177,48 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
         )}
         {!data.isStreaming && data.html && (
           <button
-            title="Export PNG"
+            title={exporting ? "Exporting..." : "Export as PNG"}
+            disabled={exporting}
             onClick={async (e) => {
               e.stopPropagation();
               if (exporting) return;
               setExporting(true);
-              try { await exportScreenPng(data.html, vpW, data.screenName); }
-              catch (err) { console.error("PNG export failed:", err); }
-              finally { setExporting(false); }
+              try {
+                await exportScreenPng(data.html, vpW, data.screenName);
+              } catch (err) {
+                const msg =
+                  err instanceof Error
+                    ? `${err.name}: ${err.message}\n${err.stack ?? ""}`
+                    : typeof err === "string"
+                      ? err
+                      : (() => {
+                          try { return JSON.stringify(err); } catch { return String(err); }
+                        })();
+                console.error("[export-png]", msg, err);
+              } finally {
+                setExporting(false);
+              }
             }}
-            style={{
-              display: "inline-flex", alignItems: "center", justifyContent: "center",
-              width: 24, height: 24, borderRadius: 6, border: "none", cursor: "pointer",
-              background: exporting ? C.borderSub : "transparent",
-              color: C.text4, transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = C.borderSub; e.currentTarget.style.color = C.text2; }}
-            onMouseLeave={(e) => { if (!exporting) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.text4; } }}
+            className="group/exp inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-foreground/70 transition shadow-[var(--ws-raised)] hover:text-foreground hover:shadow-[var(--ws-soft)] disabled:cursor-default disabled:opacity-60"
+            style={{ fontFamily: SANS }}
           >
             {exporting ? (
-              <span style={{ width: 12, height: 12, border: `2px solid ${C.text4}`, borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "wfPulse 0.8s linear infinite" }} />
+              <>
+                <span className="inline-block size-3 animate-spin rounded-full border-[1.5px] border-foreground/30 border-t-foreground" />
+                <span>Exporting…</span>
+              </>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v13" /><path d="M8 12l4 4 4-4" /><path d="M20 19H4" />
-              </svg>
+              <>
+                {/* Image-export icon: picture frame with download arrow */}
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="1.5" y="2" width="13" height="9.5" rx="2" />
+                  <circle cx="5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                  <path d="M14.5 8.5l-3-2.5-5 4.5" />
+                  <path d="M8 14v-2" />
+                  <path d="M6 13l2 2 2-2" />
+                </svg>
+                <span>Export</span>
+              </>
             )}
           </button>
         )}
@@ -198,8 +249,15 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
           onIframeMount={data.onIframeMount}
           onContentHeight={data.onContentHeight}
         />
-        {/* Shimmer overlay while waiting for content */}
-        {data.isStreaming && data.streamChunks.length === 0 && !data.html && (
+        {/*
+          Shimmer overlay: visible until we have BOTH stream chunks AND
+          measurable rendered content (contentHeight > 0). The first ~2s of
+          streaming produce a few small <!DOCTYPE><html><head>… chunks that
+          render nothing — without this guard the shimmer disappeared and the
+          card looked blank for a few seconds before real content started
+          appearing.
+        */}
+        {data.isStreaming && data.contentHeight < 60 && !data.html && (
           <div style={{
             position: "absolute", inset: 0, borderRadius: 16,
             background: "var(--card)",
@@ -264,10 +322,12 @@ interface CanvasProps {
   /** Exposed so the workspace-level wheel handler can drive pan/zoom from
    *  events that don't originate inside the React Flow pane. */
   applyWheelRef?: React.MutableRefObject<((w: WheelInput) => void) | null>;
+  /** Focus a specific screen node by id, centering + zooming to it. */
+  focusScreenRef?: React.MutableRefObject<((screenId: string) => void) | null>;
 }
 
 /* ── Inner canvas (inside ReactFlowProvider) ── */
-function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyWheelRef }: CanvasProps) {
+function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyWheelRef, focusScreenRef }: CanvasProps) {
   const { state, dispatch } = useWorkspace();
   const { app, isGenerating, genStep, activeScreenId } = state;
   const { theme } = useTheme();
@@ -284,6 +344,18 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
     return () => { if (fitViewRef) fitViewRef.current = null; };
   }, [fitView, fitViewRef]);
 
+  // Expose focus-screen so the Toolbar dropdown can jump to a screen
+  useEffect(() => {
+    if (!focusScreenRef) return;
+    focusScreenRef.current = (screenId: string) => {
+      try {
+        fitView({ nodes: [{ id: screenId }], padding: 0.2, duration: 500, maxZoom: 0.9 });
+      } catch { /* unmounted */ }
+      dispatch({ type: "SET_ACTIVE_SCREEN", id: screenId });
+    };
+    return () => { if (focusScreenRef) focusScreenRef.current = null; };
+  }, [fitView, focusScreenRef, dispatch]);
+
   const vp = VIEWPORTS[app.platform ?? "web"];
   const CANVAS_W = vp.w;
   const CANVAS_H = vp.h;
@@ -291,8 +363,11 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
   /* React Flow colorMode from app theme */
   const colorMode: ColorMode = theme === "dark" ? "dark" : "light";
 
-  /* Push live CSS variable updates to all iframes when design system changes */
+  /* Push live CSS variable updates to all iframes when design system changes.
+     After pushing, request each iframe to emit current HTML so the auto-save
+     effect picks up the new ds-live-override state — without reloading. */
   const prevDsRef = useRef(app.designSystem);
+  const dsEmitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const ds = app.designSystem;
     if (!ds || ds === prevDsRef.current) {
@@ -319,6 +394,18 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
         iframe.contentWindow?.postMessage({ type: "UPDATE_CSS_VARS", vars, bodyFont }, "*");
       } catch { /* cross-origin */ }
     });
+
+    // Debounced emit — capture latest HTML so auto-save persists DS changes.
+    // The emit happens via HTML_UPDATED → recentSelfEditsRef cache hit in
+    // LiveIframe, so no iframe reload.
+    if (dsEmitTimerRef.current) clearTimeout(dsEmitTimerRef.current);
+    dsEmitTimerRef.current = setTimeout(() => {
+      iframeMapRef.current.forEach((iframe) => {
+        try {
+          iframe.contentWindow?.postMessage({ type: "EMIT_HTML", editKey: "ds-sync" }, "*");
+        } catch { /* ignore */ }
+      });
+    }, 800);
   }, [app.designSystem]);
 
   /* Single source of truth for wheel-based pan/zoom. Called by:
@@ -494,31 +581,30 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
     return result;
   }, [app.screens, activeScreenId, streamChunks, streamTick, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight]);
 
-  /* Auto-fit so the viewport always tracks newly generated screens.
-     Fires when (a) screen count grows, or (b) generation transitions from
-     true → false. Without this, the canvas can drift (iframe wheel forwarder
-     pans during streaming) and screens end up off-viewport even though they
-     exist in state — looking like "screens disappeared." */
-  const lastFitCountRef = useRef(0);
+  /* Auto-fit policy:
+       - Fit ONCE when the very first screen appears (so user sees content).
+       - Fit ONCE when generation finishes (so all screens visible).
+     We deliberately do NOT fit on every new screen — that was causing the
+     camera to lurch away from screens still being streamed, making earlier
+     completed screens appear to "disappear" during generation. */
+  const didFitFirstRef = useRef(false);
   const wasGeneratingRef = useRef(false);
   useEffect(() => {
     const count = app.screens.length;
 
     if (count === 0) {
-      lastFitCountRef.current = 0;
+      didFitFirstRef.current = false;
       wasGeneratingRef.current = isGenerating;
       return;
     }
 
-    const grew = count > lastFitCountRef.current;
     const justFinished = wasGeneratingRef.current && !isGenerating;
     wasGeneratingRef.current = isGenerating;
 
-    if (!grew && !justFinished) return;
-    lastFitCountRef.current = count;
+    const shouldFitFirst = !didFitFirstRef.current;
+    if (!shouldFitFirst && !justFinished) return;
+    if (shouldFitFirst) didFitFirstRef.current = true;
 
-    // Slightly longer delay on "just finished" so the final iframe has time
-    // to swap from doc.write streaming to srcdoc before we measure layout.
     const delay = justFinished ? 400 : 220;
     const t = setTimeout(() => {
       try { fitView({ padding: 0.15, duration: 500 }); } catch { /* unmounted */ }
@@ -526,31 +612,21 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
     return () => clearTimeout(t);
   }, [app.screens.length, isGenerating, fitView]);
 
-  /* Refit when iframe layout shifts post-load.
-     Initial fitView uses default 900px per screen — once iframes load and
-     report real heights, rows shift and some screens land off-viewport.
-     Only applies during the first 8s after mount so we don't fight user
-     interaction later in the session. Debounced 600ms. */
-  const layoutHashRef = useRef("");
-  const mountedAtRef = useRef(Date.now());
+  /* Refit ONCE shortly after mount when iframe heights settle. Avoids the
+     "screens jump after load" problem on initial workspace open while never
+     fighting with the user's panning later. Disabled during generation. */
+  const didMountFitRef = useRef(false);
   useEffect(() => {
-    if (isGenerating) return; // generation's own fit handles this case
+    if (isGenerating) return;
+    if (didMountFitRef.current) return;
     if (app.screens.length === 0) return;
-    if (Date.now() - mountedAtRef.current > 8000) return;
-
-    const hash = app.screens
-      .map((s) => `${s.id}:${contentHeights.get(s.id) ?? 0}`)
-      .join("|");
-    if (hash === layoutHashRef.current) return;
-    const isFirstHash = layoutHashRef.current === "";
-    layoutHashRef.current = hash;
-
-    // Skip the very first hash — the count-grew effect already schedules a fit.
-    if (isFirstHash) return;
-
+    // Wait for at least one content height to come in before fitting
+    const anyHeight = app.screens.some((s) => contentHeights.get(s.id));
+    if (!anyHeight) return;
+    didMountFitRef.current = true;
     const t = setTimeout(() => {
       try { fitView({ padding: 0.15, duration: 400 }); } catch { /* unmounted */ }
-    }, 600);
+    }, 400);
     return () => clearTimeout(t);
   }, [contentHeights, app.screens, isGenerating, fitView]);
 

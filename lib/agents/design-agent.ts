@@ -3,7 +3,7 @@ import type { Content, Part } from "@google/genai";
 import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
-import { loadSkillFromDir, streamWithGemini } from "./adk-helpers";
+import { loadSkillFromDir, streamDesign } from "./adk-helpers";
 import {
   generateHtmlHead,
   injectSharedCSS,
@@ -24,10 +24,12 @@ import path from "path";
  * - PLANNING_MODEL: used for JSON-structured planners (design system, chat plan, patch ops).
  *   Flash-lite frequently returns malformed JSON here — pro is worth the cost.
  * - STREAMING_MODEL: used for long HTML bodies where speed matters more than reasoning.
+ *   Configurable via DESIGN_STREAM_MODEL env var. Slug containing "/" routes
+ *   through OpenRouter (e.g. "xiaomi/mimo-v2.5-pro"). Otherwise Gemini.
  * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
  */
 const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = "gemini-3.1-pro-preview";
+const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "gemini-3.1-pro-preview";
 const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────
@@ -697,7 +699,7 @@ async function streamScreen(
   let fullHtml = "";
   let isFirstChunk = true;
 
-  for await (let chunk of streamWithGemini(sysInstr, prompt, {
+  for await (let chunk of streamDesign(sysInstr, prompt, {
     model: STREAMING_MODEL,
     temperature: 0.7,
     maxOutputTokens: opts?.maxTokens ?? 65536,
@@ -939,7 +941,7 @@ Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
     const sysInstr = await getScreenGenInstructions();
     let fullHtml = "";
     let isFirstChunk = true;
-    for await (let chunk of streamWithGemini(sysInstr, createPrompt, {
+    for await (let chunk of streamDesign(sysInstr, createPrompt, {
       model: STREAMING_MODEL,
       temperature: 0.7,
       maxOutputTokens: 65536,
@@ -1092,7 +1094,7 @@ Output the COMPLETE modified HTML. Preserve all unchanged parts exactly.`;
       const editorInstr = await getScreenEditorInstructions();
       let fullHtml = "";
       let isFirstChunk = true;
-      for await (let chunk of streamWithGemini(editorInstr, editPromptText, {
+      for await (let chunk of streamDesign(editorInstr, editPromptText, {
         model: STREAMING_MODEL,
         temperature: 0.4,
         maxOutputTokens: 24576,
