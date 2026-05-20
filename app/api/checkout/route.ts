@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         plan,
         billing_cycle: annual ? "annual" : "monthly",
       },
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"}/dashboard/billing`,
+      return_url: `${process.env.DODO_PAYMENTS_RETURN_URL}`,
     });
 
     return NextResponse.json({
