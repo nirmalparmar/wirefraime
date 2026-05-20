@@ -11,6 +11,10 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   plan: text("plan").default("free").notNull(),
   subscriptionId: text("subscription_id"),
+  /** Dodo customer ID — captured from webhook payload. Lets us open the
+   *  customer portal directly and survives subscription churn (cancel +
+   *  resubscribe creates a new sub_id but the same cus_id). */
+  dodoCustomerId: text("dodo_customer_id"),
   subscriptionStatus: text("subscription_status").default("inactive").notNull(),
   screensUsed: integer("screens_used").default(0).notNull(),
   usageResetAt: timestamp("usage_reset_at", { withTimezone: true }).defaultNow().notNull(),

@@ -26,6 +26,12 @@
       "source": "giuseppe-trisciuoglio/developer-kit",
       "sourceType": "github",
       "computedHash": "fc286bef24c7ed9f6d22410ee524b3a83cc38825fb06313d46b5b13a90454135"
+    },
+    "subscription-integration": {
+      "source": "dodopayments/skills",
+      "sourceType": "github",
+      "skillPath": "dodo-payments/subscription-integration/SKILL.md",
+      "computedHash": "50703028194d3cfd0c13950dda704d6568f5b6c682995ee660bacf6c17e63035"
     }
   }
 }
