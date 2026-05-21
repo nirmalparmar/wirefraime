@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { projects, users } from "@/lib/db/schema";
+import { projects } from "@/lib/db/schema";
 import { resolveUserId } from "@/lib/db/helpers";
 import { eq, desc } from "drizzle-orm";
-import { PLAN_LIMITS, type PlanId } from "@/lib/payments/dodo";
+import { getPlanState } from "@/lib/payments/usage";
 
 /** GET /api/projects — list user's projects (metadata only) */
 export async function GET() {
@@ -27,44 +27,33 @@ export async function GET() {
 
     return NextResponse.json(rows);
   } catch (error) {
-    console.error("[GET /api/projects] Error:", error);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    console.error("[GET /api/projects]", error);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }
 
-/** POST /api/projects — create a project */
+/** POST /api/projects — create a project (gated by plan quota) */
 export async function POST(req: NextRequest) {
   const { userId: clerkId } = await auth();
   if (!clerkId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const internalId = await resolveUserId(clerkId);
-
-    // Check if user has screen quota remaining
-    const user = await db.query.users.findFirst({
-      where: eq(users.clerkId, clerkId),
-    });
-    const planId = (user?.plan ?? "free") as PlanId;
-    const limits = PLAN_LIMITS[planId] ?? PLAN_LIMITS.free;
-    let screensUsed = user?.screensUsed ?? 0;
-
-    // Monthly reset check
-    if (user?.usageResetAt) {
-      const resetAt = new Date(user.usageResetAt);
-      const now = new Date();
-      if (now.getMonth() !== resetAt.getMonth() || now.getFullYear() !== resetAt.getFullYear()) {
-        screensUsed = 0;
-      }
+    const state = await getPlanState(clerkId);
+    if (!state) {
+      return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
-    if (planId === "free" || screensUsed >= limits.screens) {
+    if (state.planId === "free" || state.screensRemaining <= 0) {
       return NextResponse.json(
         {
           error: "Screen limit reached. Upgrade your plan to create new projects.",
           code: "QUOTA_EXCEEDED",
-          planId,
-          screensUsed,
-          limit: limits.screens,
+          planId: state.planId,
+          screensUsed: state.screensUsed,
+          limit: state.limits.screens,
         },
         { status: 403 }
       );
@@ -75,7 +64,7 @@ export async function POST(req: NextRequest) {
     const [row] = await db
       .insert(projects)
       .values({
-        userId: internalId,
+        userId: state.userId,
         name: body.name,
         description: body.description ?? "",
         platform: body.platform ?? "web",
@@ -85,7 +74,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(row, { status: 201 });
   } catch (error) {
-    console.error("[POST /api/projects] Error:", error);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    console.error("[POST /api/projects]", error);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }

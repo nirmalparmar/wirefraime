@@ -15,15 +15,18 @@ export async function POST(req: NextRequest) {
         ?? email_addresses?.[0]?.email_address
         ?? null;
 
-      await db.insert(users).values({
-        clerkId: id,
-        email: primaryEmail,
-        firstName: first_name ?? null,
-        lastName: last_name ?? null,
-        avatarUrl: image_url ?? null,
-        plan: "starter",
-        createdAt: new Date(created_at),
-      });
+      await db
+        .insert(users)
+        .values({
+          clerkId: id,
+          email: primaryEmail,
+          firstName: first_name ?? null,
+          lastName: last_name ?? null,
+          avatarUrl: image_url ?? null,
+          plan: "free",
+          createdAt: new Date(created_at),
+        })
+        .onConflictDoNothing({ target: users.clerkId });
     }
 
     if (evt.type === "user.updated") {

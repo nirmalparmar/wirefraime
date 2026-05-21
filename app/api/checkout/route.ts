@@ -1,67 +1,91 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import DodoPayments from "dodopayments";
+import { z } from "zod";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { requireDodo } from "@/lib/payments/client";
+import { getProductId } from "@/lib/payments/dodo";
 
-const client = new DodoPayments({
-  bearerToken: process.env.DODO_PAYMENTS_API_KEY!,
-  environment: (process.env.DODO_PAYMENTS_ENVIRONMENT as "test_mode" | "live_mode") ?? "test_mode",
+const Body = z.object({
+  plan: z.enum(["pro", "ultra"]),
+  annual: z.boolean(),
 });
 
-const PRODUCT_IDS: Record<string, string | undefined> = {
-  pro_monthly: process.env.DODO_PRO_MONTHLY_PRODUCT_ID,
-  pro_annual: process.env.DODO_PRO_ANNUAL_PRODUCT_ID,
-  ultra_monthly: process.env.DODO_ULTRA_MONTHLY_PRODUCT_ID,
-  ultra_annual: process.env.DODO_ULTRA_ANNUAL_PRODUCT_ID,
-};
-
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = await currentUser();
+  const parsed = Body.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid plan or billing cycle" }, { status: 400 });
+  }
+  const { plan, annual } = parsed.data;
+
+  const productId = getProductId(plan, annual);
+  if (!productId) {
+    console.error("[checkout] product id not configured", { plan, annual });
+    return NextResponse.json(
+      { error: "Payments aren't configured for this plan yet." },
+      { status: 500 }
+    );
+  }
+
+  const returnUrl = process.env.DODO_PAYMENTS_RETURN_URL;
+  if (!returnUrl) {
+    console.error("[checkout] DODO_PAYMENTS_RETURN_URL not set");
+    return NextResponse.json(
+      { error: "Payments aren't configured for this environment." },
+      { status: 500 }
+    );
+  }
+
+  // One query: Clerk for email/name; DB for an existing Dodo customer id.
+  const [user, row] = await Promise.all([
+    currentUser(),
+    db.query.users.findFirst({
+      where: eq(users.clerkId, clerkId),
+      columns: { dodoCustomerId: true },
+    }),
+  ]);
+
   const email = user?.emailAddresses?.[0]?.emailAddress;
   if (!email) {
-    return NextResponse.json({ error: "No email found on account" }, { status: 400 });
+    return NextResponse.json({ error: "No email on account" }, { status: 400 });
   }
 
-  const { plan, annual } = (await req.json()) as {
-    plan: "pro" | "ultra";
-    annual: boolean;
-  };
-
-  if (!["pro", "ultra"].includes(plan)) {
-    return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
-  }
-
-  const key = `${plan}_${annual ? "annual" : "monthly"}`;
-  const productId = PRODUCT_IDS[key];
-  if (!productId) {
-    return NextResponse.json({ error: "Product not configured" }, { status: 500 });
-  }
+  // Attach existing Dodo customer when we have one — keeps payment methods,
+  // history, and address on file across subscriptions.
+  const customer = row?.dodoCustomerId
+    ? { customer_id: row.dodoCustomerId }
+    : {
+        email,
+        name: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || email,
+      };
 
   try {
-    const session = await client.checkoutSessions.create({
+    const session = await requireDodo().checkoutSessions.create({
       product_cart: [{ product_id: productId, quantity: 1 }],
-      customer: {
-        email,
-        name: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || undefined,
-      },
+      customer,
       metadata: {
-        clerk_user_id: userId,
+        clerk_user_id: clerkId,
         plan,
         billing_cycle: annual ? "annual" : "monthly",
       },
-      return_url: `${process.env.DODO_PAYMENTS_RETURN_URL}`,
+      return_url: returnUrl,
     });
 
     return NextResponse.json({
       checkout_url: session.checkout_url,
       session_id: session.session_id,
     });
-  } catch (error: unknown) {
-    console.error("[POST /api/checkout] Checkout error:", error);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  } catch (error) {
+    console.error("[checkout]", error);
+    return NextResponse.json(
+      { error: "We couldn't start checkout. Please try again." },
+      { status: 500 }
+    );
   }
 }

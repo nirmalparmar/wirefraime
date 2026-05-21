@@ -1,54 +1,47 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { PLAN_LIMITS, type PlanId } from "@/lib/payments/dodo";
+import { getPlanState } from "@/lib/payments/usage";
 
 /**
  * GET /api/subscription
- * Returns only what we own: plan + usage from our DB.
- * Billing details (renewal date, payment methods, invoices, cancellation) are
- * handled by Dodo's customer portal — see /api/customer-portal.
+ *
+ * Returns the plan + quota snapshot we own. Billing details (renewal date,
+ * invoices, payment method, cancellation) live in Dodo's customer portal —
+ * see /api/customer-portal.
  */
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const row = await db.query.users.findFirst({
-      where: eq(users.clerkId, userId),
-    });
-
-    const planId = (row?.plan ?? "free") as PlanId;
-    const limits = PLAN_LIMITS[planId] ?? PLAN_LIMITS.free;
-
-    // Monthly usage reset
-    let screensUsed = row?.screensUsed ?? 0;
-    if (row?.usageResetAt) {
-      const resetAt = new Date(row.usageResetAt);
-      const now = new Date();
-      if (now.getMonth() !== resetAt.getMonth() || now.getFullYear() !== resetAt.getFullYear()) {
-        screensUsed = 0;
-        await db
-          .update(users)
-          .set({ screensUsed: 0, usageResetAt: now, updatedAt: now })
-          .where(eq(users.clerkId, userId));
-      }
+    const state = await getPlanState(clerkId);
+    if (!state) {
+      // User row not seeded yet (Clerk webhook hasn't fired) — treat as free.
+      return NextResponse.json({
+        planId: "free",
+        subscriptionId: null,
+        subscriptionStatus: "inactive",
+        limits: { screens: 0 },
+        screensUsed: 0,
+        screensRemaining: 0,
+      });
     }
 
     return NextResponse.json({
-      planId,
-      subscriptionId: row?.subscriptionId ?? null,
-      subscriptionStatus: row?.subscriptionStatus ?? "inactive",
-      limits,
-      screensUsed,
-      screensRemaining: planId === "free" ? 0 : Math.max(0, limits.screens - screensUsed),
+      planId: state.planId,
+      subscriptionId: state.subscriptionId,
+      subscriptionStatus: state.subscriptionStatus,
+      limits: state.limits,
+      screensUsed: state.screensUsed,
+      screensRemaining: state.screensRemaining,
     });
   } catch (error) {
-    console.error("[GET /api/subscription] Error:", error);
-    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    console.error("[GET /api/subscription]", error);
+    return NextResponse.json(
+      { error: "Something went wrong. Please try again." },
+      { status: 500 }
+    );
   }
 }

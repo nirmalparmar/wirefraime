@@ -1,33 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import DodoPayments from "dodopayments";
-
-const dodo = new DodoPayments({
-  bearerToken: process.env.DODO_PAYMENTS_API_KEY ?? "",
-  environment:
-    (process.env.DODO_PAYMENTS_ENVIRONMENT as "test_mode" | "live_mode") ?? "test_mode",
-});
+import { dodo } from "@/lib/payments/client";
 
 /**
  * GET /api/customer-portal
- * Returns JSON `{ url }` with a Dodo-hosted portal session link. The client
- * decides whether to redirect.
+ * Returns `{ url }` with a Dodo-hosted portal session link.
  *
- * Source of truth is `users.dodoCustomerId`, captured by the Dodo webhook
- * (see app/api/webhooks/dodo/route.ts). No URL params, no lookups.
- *
- * Error codes:
- *   unauthenticated      — no signed-in user
- *   not_configured       — DODO_PAYMENTS_API_KEY missing
- *   not_subscribed       — free plan, nothing to manage
- *   webhook_pending      — paid plan in DB but customer_id not synced yet
- *                          (rare race: webhook still in flight)
- *   portal_unavailable   — Dodo unreachable / unexpected error
+ * Source of truth is `users.dodoCustomerId`, written by the Dodo webhook.
+ * No URL params, no Dodo API calls beyond portal session creation.
  */
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const { userId: clerkId } = await auth();
   if (!clerkId) {
     return NextResponse.json(
@@ -36,7 +21,7 @@ export async function GET(_req: NextRequest) {
     );
   }
 
-  if (!process.env.DODO_PAYMENTS_API_KEY) {
+  if (!dodo) {
     return NextResponse.json(
       { error: "Payments aren't configured for this environment.", code: "not_configured" },
       { status: 500 }
@@ -44,7 +29,10 @@ export async function GET(_req: NextRequest) {
   }
 
   try {
-    const row = await db.query.users.findFirst({ where: eq(users.clerkId, clerkId) });
+    const row = await db.query.users.findFirst({
+      where: eq(users.clerkId, clerkId),
+      columns: { plan: true, dodoCustomerId: true },
+    });
 
     if (!row || (row.plan === "free" && !row.dodoCustomerId)) {
       return NextResponse.json(
@@ -57,12 +45,11 @@ export async function GET(_req: NextRequest) {
     }
 
     if (!row.dodoCustomerId) {
-      // Webhook hasn't synced yet, or this account predates customer_id capture.
-      // Caller can retry shortly; the webhook is the canonical writer.
+      // Webhook hasn't synced the customer id yet. Caller retries.
       return NextResponse.json(
         {
           error:
-            "Your billing account is still being set up. Please refresh in a few seconds, or contact support if this persists.",
+            "Your billing account is still being set up. Please refresh in a few seconds.",
           code: "webhook_pending",
         },
         { status: 409 }
@@ -74,7 +61,10 @@ export async function GET(_req: NextRequest) {
   } catch (error) {
     console.error("[customer-portal]", error);
     return NextResponse.json(
-      { error: "We couldn't open the billing portal. Please try again.", code: "portal_unavailable" },
+      {
+        error: "We couldn't open the billing portal. Please try again.",
+        code: "portal_unavailable",
+      },
       { status: 500 }
     );
   }

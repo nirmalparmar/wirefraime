@@ -1,4 +1,11 @@
+import "server-only";
+
 export type PlanId = "free" | "pro" | "ultra";
+export type SubscriptionStatus =
+  | "inactive"
+  | "active"
+  | "past_due"
+  | "cancel_pending";
 
 export const PLAN_LIMITS: Record<PlanId, { screens: number }> = {
   free: { screens: 0 },
@@ -8,17 +15,36 @@ export const PLAN_LIMITS: Record<PlanId, { screens: number }> = {
 
 /** Monthly prices in USD */
 export const PLAN_PRICES: Record<Exclude<PlanId, "free">, { monthly: number; annual: number }> = {
-  pro: { monthly: 20, annual: Math.round(20 * (1 - 0.40)) },
-  ultra: { monthly: 40, annual: Math.round(40 * (1 - 0.40)) },
+  pro: { monthly: 20, annual: Math.round(20 * (1 - 0.4)) },
+  ultra: { monthly: 40, annual: Math.round(40 * (1 - 0.4)) },
 };
 
-/** Annual discount percentage */
 export const ANNUAL_DISCOUNT = 40;
 
-/** Map Dodo product IDs → plan IDs (server-side only) */
-export const PLAN_PRODUCT_IDS: Record<string, PlanId> = {
-  [process.env.DODO_PRO_MONTHLY_PRODUCT_ID ?? ""]: "pro",
-  [process.env.DODO_PRO_ANNUAL_PRODUCT_ID ?? ""]: "pro",
-  [process.env.DODO_ULTRA_MONTHLY_PRODUCT_ID ?? ""]: "ultra",
-  [process.env.DODO_ULTRA_ANNUAL_PRODUCT_ID ?? ""]: "ultra",
+type PlanKey = `${Exclude<PlanId, "free">}_${"monthly" | "annual"}`;
+
+/** Dodo product IDs keyed by `${plan}_${cycle}`. Server-only — never expose. */
+const PRODUCT_IDS: Record<PlanKey, string | undefined> = {
+  pro_monthly: process.env.DODO_PRO_MONTHLY_PRODUCT_ID,
+  pro_annual: process.env.DODO_PRO_ANNUAL_PRODUCT_ID,
+  ultra_monthly: process.env.DODO_ULTRA_MONTHLY_PRODUCT_ID,
+  ultra_annual: process.env.DODO_ULTRA_ANNUAL_PRODUCT_ID,
 };
+
+/** Reverse map: Dodo product ID → plan tier. Built lazily so env order doesn't matter. */
+const PRODUCT_TO_PLAN: Record<string, PlanId> = Object.entries(PRODUCT_IDS).reduce(
+  (acc, [key, productId]) => {
+    if (productId) acc[productId] = key.startsWith("pro_") ? "pro" : "ultra";
+    return acc;
+  },
+  {} as Record<string, PlanId>
+);
+
+export function getProductId(plan: Exclude<PlanId, "free">, annual: boolean): string | null {
+  return PRODUCT_IDS[`${plan}_${annual ? "annual" : "monthly"}` as PlanKey] ?? null;
+}
+
+export function planFromProductId(productId: string | null | undefined): PlanId | null {
+  if (!productId) return null;
+  return PRODUCT_TO_PLAN[productId] ?? null;
+}

@@ -2,79 +2,31 @@ import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { users, projects, screens } from "@/lib/db/schema";
-import { resolveUserId } from "@/lib/db/helpers";
-import { eq, sql, and } from "drizzle-orm";
+import { projects, screens } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 import { generateDesignSystem, generateScreenHtml } from "@/lib/agents/design-agent";
 import { uploadScreenHtml } from "@/lib/storage";
-import { PLAN_LIMITS, type PlanId } from "@/lib/payments/dodo";
+import { getPlanState, incrementScreenUsage } from "@/lib/payments/usage";
 import type { DesignSystem, Platform } from "@/lib/types";
 
-/** Check if user has remaining screen quota. Returns { allowed, planId, screensUsed, limit } */
-async function checkScreenQuota(clerkId: string) {
-  const row = await db.query.users.findFirst({
-    where: eq(users.clerkId, clerkId),
-  });
-
-  const planId = (row?.plan ?? "free") as PlanId;
-  const limits = PLAN_LIMITS[planId] ?? PLAN_LIMITS.free;
-
-  if (planId === "free") {
-    return { allowed: false, planId, screensUsed: 0, limit: 0 };
-  }
-
-  let screensUsed = row?.screensUsed ?? 0;
-
-  // Monthly reset check
-  if (row?.usageResetAt) {
-    const resetAt = new Date(row.usageResetAt);
-    const now = new Date();
-    if (now.getMonth() !== resetAt.getMonth() || now.getFullYear() !== resetAt.getFullYear()) {
-      screensUsed = 0;
-      await db
-        .update(users)
-        .set({ screensUsed: 0, usageResetAt: now, updatedAt: now })
-        .where(eq(users.clerkId, clerkId));
-    }
-  }
-
-  return {
-    allowed: screensUsed < limits.screens,
-    planId,
-    screensUsed,
-    limit: limits.screens,
-  };
-}
-
-/** Increment the user's screen usage counter */
-async function incrementScreenUsage(clerkId: string, count: number) {
-  await db
-    .update(users)
-    .set({
-      screensUsed: sql`${users.screensUsed} + ${count}`,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.clerkId, clerkId));
-}
-
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
+  const { userId: clerkId } = await auth();
+  if (!clerkId) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // Check subscription & quota
-  const quota = await checkScreenQuota(userId);
-  if (!quota.allowed) {
+  // Single lookup: plan, quota, monthly reset, and internal user id for FK use.
+  const state = await getPlanState(clerkId);
+  if (!state || state.planId === "free" || state.screensRemaining <= 0) {
     return new Response(
       JSON.stringify({
         error: "Screen limit reached",
-        planId: quota.planId,
-        screensUsed: quota.screensUsed,
-        limit: quota.limit,
+        planId: state?.planId ?? "free",
+        screensUsed: state?.screensUsed ?? 0,
+        limit: state?.limits.screens ?? 0,
       }),
       { status: 403, headers: { "Content-Type": "application/json" } }
     );
@@ -82,14 +34,7 @@ export async function POST(req: NextRequest) {
 
   const { name, description, projectId } = await req.json();
   const encoder = new TextEncoder();
-
-  // Resolve internal user ID for storage
-  let internalUserId: string | null = null;
-  try {
-    internalUserId = await resolveUserId(userId);
-  } catch {
-    // User may not exist in DB yet — persist disabled
-  }
+  const internalUserId = state.userId;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -115,7 +60,7 @@ export async function POST(req: NextRequest) {
         const platform: Platform = plan.platform;
 
         // Check if planned screens would exceed remaining quota
-        const remaining = quota.limit - quota.screensUsed;
+        const remaining = state.screensRemaining;
         // Replace Gemini's slug IDs with real UUIDs for DB compatibility
         const screensToGenerate = plannedScreens.slice(0, remaining).map((s) => ({
           ...s,
@@ -220,7 +165,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Increment usage after successful generation
-        await incrementScreenUsage(userId, screensToGenerate.length);
+        await incrementScreenUsage(internalUserId, screensToGenerate.length);
 
         send("done", {});
       } catch (err) {
