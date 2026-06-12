@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "notion",
+  "name": "Notion",
+  "category": "Productivity",
+  "description": "Calm, warm-neutral, content-first. Quiet chrome, generous space.",
+  "tags": [
+    "productivity",
+    "docs",
+    "calm",
+    "neutral"
+  ],
+  "fonts": {
+    "primary": "Sora",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "notion"
+  }
+}

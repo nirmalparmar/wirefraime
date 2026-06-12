@@ -22,6 +22,100 @@ export function extractJson(text: string): string {
   return cleaned.slice(start, end + 1);
 }
 
+/**
+ * Best-effort JSON parse for LLM output. Tries, in order:
+ *  1. direct parse of the fence-stripped text
+ *  2. parse of the first `{...}` block
+ *  3. parse after structural repair (escape raw newlines in strings, drop
+ *     trailing commas, close unterminated strings/brackets)
+ * Returns null when nothing parses — callers decide whether to retry or fall back.
+ */
+export function tryParseJsonLoose(text: string): unknown {
+  if (!text || !text.trim()) return null;
+  const candidates: string[] = [];
+  const cleaned = stripFences(text).trim();
+  if (cleaned) candidates.push(cleaned);
+  try {
+    const extracted = extractJson(text);
+    if (extracted !== cleaned) candidates.push(extracted);
+  } catch {
+    /* no braces at all — repair can't conjure JSON */
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch { /* try repaired */ }
+    try {
+      return JSON.parse(repairJson(candidate));
+    } catch { /* try next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * Structural JSON repair for common LLM failure modes:
+ *  - literal newlines/tabs/control chars inside string values (frequent when
+ *    the model embeds HTML in a JSON string)
+ *  - trailing commas before } or ]
+ *  - truncated output: unterminated string, unclosed braces/brackets
+ */
+export function repairJson(input: string): string {
+  let out = "";
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        out += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+        out += ch;
+        continue;
+      }
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+      if (ch.charCodeAt(0) < 0x20) continue;
+      out += ch;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === "{" || ch === "[") {
+      stack.push(ch === "{" ? "}" : "]");
+      out += ch;
+      continue;
+    }
+    if (ch === "}" || ch === "]") {
+      out = out.replace(/,\s*$/, "");
+      if (stack[stack.length - 1] === ch) stack.pop();
+      out += ch;
+      continue;
+    }
+    out += ch;
+  }
+
+  if (inString) out += '"';
+  out = out.replace(/,\s*$/, "");
+  while (stack.length) out += stack.pop();
+  return out;
+}
+
 /** Fence stripping that also handles partial-fence prefixes during streaming. */
 export function stripLeadingFence(chunk: string): string {
   if (chunk.startsWith("```html\n")) return chunk.replace(/^```html\n/, "");
@@ -119,11 +213,33 @@ export function validateAndRepairHtml(input: string): HtmlValidationResult {
     }
   }
 
+  // 6. Inject unique data-wf-id attributes for robust patching
+  html = injectUniqueIds(html);
+
   return {
     ok: errors.length === 0,
     errors,
     repaired: html,
   };
+}
+
+/** Injects data-wf-id into every tag inside <body> to anchor AI edits. */
+function injectUniqueIds(html: string): string {
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  if (!bodyMatch) return html;
+
+  let counter = 1;
+  const skipTags = new Set(["script", "style", "svg", "path", "circle", "line", "polyline", "polygon", "rect", "defs", "g", "br", "hr"]);
+  const ts = Math.random().toString(36).slice(2, 6);
+
+  const newBody = bodyMatch[0].replace(/<([a-zA-Z0-9\-]+)([^>]*?)>/g, (match, tag, attrs) => {
+    if (skipTags.has(tag.toLowerCase())) return match;
+    if (attrs.includes("data-wf-id=")) return match;
+    
+    return `<${tag} data-wf-id="el-${ts}-${counter++}"${attrs}>`;
+  });
+
+  return html.replace(bodyMatch[0], newBody);
 }
 
 function findUnclosedRawTextElement(html: string): string | null {

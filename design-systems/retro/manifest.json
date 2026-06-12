@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "retro",
+  "name": "Retro",
+  "category": "Retro & Nostalgic",
+  "description": "Nostalgic palette, monospace voice, vintage warmth.",
+  "tags": [
+    "retro",
+    "vintage",
+    "mono",
+    "nostalgic"
+  ],
+  "fonts": {
+    "primary": "Space Mono",
+    "mono": "Space Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "retro"
+  }
+}

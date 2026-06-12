@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "apple",
+  "name": "Apple",
+  "category": "Consumer",
+  "description": "Clean, cinematic, premium. Big imagery, thin chrome, one blue accent.",
+  "tags": [
+    "consumer",
+    "marketing",
+    "premium",
+    "clean"
+  ],
+  "fonts": {
+    "primary": "Outfit",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "apple"
+  }
+}

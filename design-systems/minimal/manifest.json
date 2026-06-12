@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "minimal",
+  "name": "Minimal",
+  "category": "Modern & Minimal",
+  "description": "Maximum whitespace, hairline borders, one quiet accent. Subtract.",
+  "tags": [
+    "minimal",
+    "clean",
+    "neutral",
+    "spacious"
+  ],
+  "fonts": {
+    "primary": "Geist",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "minimal"
+  }
+}

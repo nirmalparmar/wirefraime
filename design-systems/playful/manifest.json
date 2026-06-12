@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "playful",
+  "name": "Playful",
+  "category": "Playful",
+  "description": "Rounded, friendly, high-energy. Bouncy shapes, bright accents.",
+  "tags": [
+    "playful",
+    "consumer",
+    "rounded",
+    "fun"
+  ],
+  "fonts": {
+    "primary": "Fredoka",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "duolingo"
+  }
+}

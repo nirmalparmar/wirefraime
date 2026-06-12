@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { LlmAgent, InMemoryRunner } from "@google/adk";
+import { LlmAgent, InMemoryRunner, BaseLlm } from "@google/adk";
 import type { Content } from "@google/genai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -59,17 +59,68 @@ export class SkillToolset {
 
 interface AgentConfig {
   name: string;
-  model: string;
+  model: string | BaseLlm;
   instructions: string;
   tools?: SkillToolset[];
-  outputSchema?: any;
+  outputSchema?: any; // Zod schema
   temperature?: number;
 }
 
+/** Converts a Zod v4 schema to a plain JSON Schema object for OpenRouter structured outputs. */
+function zodToJsonSchema(zodSchema: any): Record<string, unknown> {
+  function convertField(field: any): Record<string, unknown> {
+    const type = field._def?.type;
+    if (type === "string") return { type: "string" };
+    if (type === "number") return { type: "number" };
+    if (type === "boolean") return { type: "boolean" };
+    if (type === "optional") return convertField(field._def.innerType);
+    if (type === "enum") {
+      // Zod v4 enum: values is an object { key: value }
+      const vals = field._def.values;
+      const enumValues = typeof vals === "object" && !Array.isArray(vals)
+        ? Object.values(vals)
+        : vals;
+      return { type: "string", enum: enumValues };
+    }
+    if (type === "array") {
+      return { type: "array", items: convertField(field._def.element) };
+    }
+    if (type === "object") {
+      const shape: Record<string, any> = field._def?.shape ?? {};
+      const properties: Record<string, unknown> = {};
+      const required: string[] = [];
+      for (const [k, v] of Object.entries(shape)) {
+        properties[k] = convertField(v);
+        if ((v as any)._def?.type !== "optional") required.push(k);
+      }
+      return { type: "object", properties, ...(required.length ? { required } : {}) };
+    }
+    // fallback
+    return { type: "string" };
+  }
+
+  try {
+    const shape: Record<string, any> = zodSchema._def?.shape ?? zodSchema.shape ?? {};
+    const properties: Record<string, unknown> = {};
+    const required: string[] = [];
+    for (const [k, v] of Object.entries(shape)) {
+      properties[k] = convertField(v);
+      if ((v as any)._def?.type !== "optional") required.push(k);
+    }
+    return { type: "object", properties, ...(required.length ? { required } : {}) };
+  } catch {
+    return { type: "object" };
+  }
+}
+
 export class Agent {
-  private adkAgent: LlmAgent;
-  private runner: InMemoryRunner;
   private systemInstruction: string;
+  private modelId: string;
+  private adkAgent?: LlmAgent;
+  private runner?: InMemoryRunner;
+  private outputSchema?: any;
+  private temperature: number;
+  private isOpenRouter: boolean;
 
   constructor(config: AgentConfig) {
     let combinedInstructions = config.instructions;
@@ -79,31 +130,107 @@ export class Agent {
       for (const toolset of config.tools) {
         if (toolset instanceof SkillToolset) {
           for (const skill of toolset.skills) {
-             combinedInstructions += `\n\n=== SKILL: ${skill.frontmatter.name || 'Unknown'} ===\n${skill.frontmatter.description || ''}\n\n${skill.instructions}`;
+            combinedInstructions += `\n\n=== SKILL: ${skill.frontmatter.name || "Unknown"} ===\n${skill.frontmatter.description || ""}\n\n${skill.instructions}`;
           }
         }
       }
     }
 
-    this.systemInstruction = combinedInstructions;
+    this.temperature = config.temperature ?? 0.7;
+    this.outputSchema = config.outputSchema;
 
-    this.adkAgent = new LlmAgent({
-      name: config.name,
-      model: config.model,
-      instruction: this.systemInstruction,
-      outputSchema: config.outputSchema,
-      generateContentConfig: {
-        maxOutputTokens: 16384,
-        temperature: config.temperature ?? 0.7,
-      }
+    // Resolve model string
+    const modelStr = typeof config.model === "string"
+      ? config.model
+      : (config.model as any).model ?? "gemini-2.5-pro-preview-05-06";
+
+    this.modelId = modelStr;
+    this.isOpenRouter = modelStr.includes("/") && !modelStr.startsWith("gemini-");
+
+    if (this.isOpenRouter) {
+      // OpenRouter path: store plain instructions (no ADK escaping needed)
+      this.systemInstruction = combinedInstructions;
+    } else {
+      // ADK/Gemini path: escape curly braces
+      this.systemInstruction = combinedInstructions.replace(/([{}])/g, "\\$1");
+      this.adkAgent = new LlmAgent({
+        name: config.name,
+        model: config.model,
+        instruction: this.systemInstruction,
+        outputSchema: config.outputSchema,
+        generateContentConfig: {
+          // Generous cap: thinking models (gemini-3.x pro) burn output budget on
+          // reasoning tokens before emitting JSON — 16384 caused empty responses.
+          maxOutputTokens: 32768,
+          temperature: this.temperature,
+        },
+      });
+      this.runner = new InMemoryRunner({ agent: this.adkAgent, appName: "wirefraime" });
+    }
+  }
+
+  /**
+   * Direct OpenRouter completion — non-streaming, with optional JSON schema enforcement.
+   * Used for planning/structured calls when the model is an OpenRouter slug.
+   */
+  private async callOpenRouter(prompt: string): Promise<string> {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error("OPENROUTER_API_KEY is not set");
+
+    const body: Record<string, unknown> = {
+      model: this.modelId,
+      stream: false,
+      temperature: this.temperature,
+      max_tokens: 16384,
+      messages: [
+        { role: "system", content: this.systemInstruction },
+        { role: "user", content: prompt },
+      ],
+    };
+
+    // If there's an output schema, enforce structured JSON output
+    if (this.outputSchema) {
+      const jsonSchema = zodToJsonSchema(this.outputSchema);
+      body.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: "structured_output",
+          strict: true,
+          schema: jsonSchema,
+        },
+      };
+    }
+
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.OPENROUTER_REFERER || "https://wirefraime.app",
+        "X-Title": "Wirefraime",
+      },
+      body: JSON.stringify(body),
     });
 
-    this.runner = new InMemoryRunner({ agent: this.adkAgent, appName: "wirefraime" });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`OpenRouter ${res.status}: ${txt.slice(0, 400)}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content ?? "";
   }
 
   async *chatStream(prompt: string): AsyncGenerator<string> {
+    if (this.isOpenRouter) {
+      // For structured calls, just do a single non-streaming call
+      const text = await this.callOpenRouter(prompt);
+      if (text) yield text;
+      return;
+    }
+    // ADK/Gemini path
     const message: Content = { role: "user", parts: [{ text: prompt }] };
-    for await (const event of this.runner.runEphemeral({
+    for await (const event of this.runner!.runEphemeral({
       userId: "system",
       newMessage: message,
     })) {
@@ -120,6 +247,11 @@ export class Agent {
     let text = "";
     for await (const chunk of this.chatStream(prompt)) {
       text += chunk;
+    }
+    if (!text.trim()) {
+      throw new Error(
+        `Model ${this.modelId} returned an empty response (safety block or output-token exhaustion)`
+      );
     }
     return { text };
   }
@@ -138,17 +270,27 @@ export async function* streamWithGemini(
     temperature?: number;
     maxOutputTokens?: number;
     image?: { data: string; mimeType: string };
+    /** Receives thought-summary text when the model emits it. */
+    onReasoning?: (text: string) => void;
   }
 ): AsyncGenerator<string> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
   const genAI = new GoogleGenerativeAI(apiKey);
+
+  // Thought summaries are opt-in (DESIGN_REASONING=1): the legacy SDK / model
+  // support is uncertain, so we don't risk the main generation by default.
+  const wantThoughts = opts?.onReasoning && process.env.DESIGN_REASONING === "1";
+  const generationConfig: Record<string, unknown> = {
+    temperature: opts?.temperature ?? 0.7,
+    maxOutputTokens: opts?.maxOutputTokens ?? 65536,
+    ...(wantThoughts ? { thinkingConfig: { includeThoughts: true } } : {}),
+  };
+
   const model = genAI.getGenerativeModel({
     model: opts?.model ?? "gemini-2.5-pro-preview-05-06",
     systemInstruction,
-    generationConfig: {
-      temperature: opts?.temperature ?? 0.7,
-      maxOutputTokens: opts?.maxOutputTokens ?? 65536,
-    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    generationConfig: generationConfig as any,
   });
 
   // Build content parts: text + optional image
@@ -161,8 +303,21 @@ export async function* streamWithGemini(
 
   const result = await model.generateContentStream(parts);
   for await (const chunk of result.stream) {
-    const text = chunk.text();
-    if (text) yield text;
+    // Separate thought parts (reasoning) from content parts when present.
+    const cparts = chunk.candidates?.[0]?.content?.parts as
+      | Array<{ text?: string; thought?: boolean }>
+      | undefined;
+    if (cparts && cparts.length) {
+      for (const p of cparts) {
+        if (typeof p.text === "string" && p.text) {
+          if (p.thought) opts?.onReasoning?.(p.text);
+          else yield p.text;
+        }
+      }
+    } else {
+      const text = chunk.text();
+      if (text) yield text;
+    }
   }
 }
 
@@ -184,6 +339,8 @@ export async function* streamWithOpenRouter(
     temperature?: number;
     maxOutputTokens?: number;
     image?: { data: string; mimeType: string };
+    /** Receives reasoning deltas for reasoning-capable models. */
+    onReasoning?: (text: string) => void;
   }
 ): AsyncGenerator<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -249,8 +406,11 @@ export async function* streamWithOpenRouter(
         if (data === "[DONE]") return;
         try {
           const parsed = JSON.parse(data);
-          const delta = parsed?.choices?.[0]?.delta?.content;
-          if (typeof delta === "string" && delta) yield delta;
+          const delta = parsed?.choices?.[0]?.delta;
+          const reasoning = delta?.reasoning;
+          if (typeof reasoning === "string" && reasoning) opts.onReasoning?.(reasoning);
+          const content = delta?.content;
+          if (typeof content === "string" && content) yield content;
         } catch {
           // Some providers send keep-alive or comment frames — ignore
         }
@@ -274,6 +434,8 @@ export async function* streamDesign(
     temperature?: number;
     maxOutputTokens?: number;
     image?: { data: string; mimeType: string };
+    /** Receives model reasoning/thinking text when available. */
+    onReasoning?: (text: string) => void;
   }
 ): AsyncGenerator<string> {
   const isOpenRouter = opts.model.includes("/") && !opts.model.startsWith("gemini-");

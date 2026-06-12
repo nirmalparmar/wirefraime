@@ -1,19 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth, UserButton } from "@clerk/nextjs";
 import { useTheme } from "@/components/ThemeProvider";
+import { NavAuthActions } from "./nav-auth-actions";
 
-const NAV_LINKS = [
+const DEFAULT_LINKS: { label: string; href: string; active?: boolean }[] = [
   { label: "Features", href: "/#features" },
   { label: "How it works", href: "/#how-it-works" },
   { label: "Pricing", href: "/#pricing" },
   { label: "Blog", href: "/blog" },
 ];
 
-export function Navbar() {
+export function Navbar({
+  links,
+  rightExtra,
+  authVariant,
+}: {
+  links?: { label: string; href: string; active?: boolean }[];
+  rightExtra?: React.ReactNode;
+  authVariant?: "glass" | "app";
+}) {
   const { theme, toggle } = useTheme();
-  const { isSignedIn } = useAuth();
+  const navLinks = links ?? DEFAULT_LINKS;
 
   return (
     <nav className="fixed inset-x-0 top-0 z-50 px-4 pt-4 md:px-8 md:pt-5">
@@ -31,14 +39,18 @@ export function Navbar() {
 
         {/* Center links */}
         <div className="hidden items-center gap-8 md:flex">
-          {NAV_LINKS.map((link) => (
-            <a
+          {navLinks.map((link) => (
+            <Link
               key={link.label}
               href={link.href}
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className={`text-sm font-medium transition-colors ${
+                link.active
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </div>
 
@@ -60,36 +72,9 @@ export function Navbar() {
             )}
           </button>
 
-          {!isSignedIn ? (
-            <>
-              <Link
-                href="/sign-in"
-                className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground md:block"
-              >
-                Login
-              </Link>
-              <Link
-                href="/sign-up"
-                className="liquid-glass-adaptive rounded-full px-5 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
-              >
-                Get Started
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/dashboard"
-                className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground md:block"
-              >
-                Dashboard
-              </Link>
-              <UserButton
-                appearance={{
-                  elements: { avatarBox: "size-7" },
-                }}
-              />
-            </>
-          )}
+          {rightExtra}
+
+          <NavAuthActions variant={authVariant} />
         </div>
       </div>
     </nav>

@@ -25,11 +25,11 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Wirefraime — AI Wireframe & UI Design Tool",
+    default: "AI Wireframe & UI Design Generator - Wirefraime",
     template: "%s — Wirefraime",
   },
   description:
-    "Wirefraime is the AI wireframe tool that turns a prompt into a full UI design — every screen, every state, every flow. Your AI UI designer.",
+    "Wirefraime is the AI wireframe tool that turns a prompt into a full UI design every screen, every state, every flow. Your AI UI designer use it do design landing page or full app screens and flow in seconds.",
   applicationName: "Wirefraime",
   keywords: [
     "wireframe",
@@ -55,14 +55,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: "/",
-    title: "Wirefraime — AI Wireframe & UI Design Tool",
+    title: "AI Wireframe & UI Design Generator - Wirefraime",
     description:
-      "AI wireframe tool that turns a prompt into a full UI design. Generate wireframes, mockups, and every screen of your app — in seconds.",
+      "AI wireframe tool that turns a prompt into a full UI design. Generate wireframes, mockups, and every screen of your app in seconds.",
     siteName: "Wirefraime",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Wirefraime — AI Wireframe & UI Design Tool",
+    title: "Wirefraime - AI Wireframe & UI Design Tool",
     description:
       "AI wireframe tool that turns a prompt into a full UI design. Wireframes, mockups, every screen — in seconds.",
   },

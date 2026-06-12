@@ -6,14 +6,13 @@ import { uuid } from "@/lib/store";
 import { WorkspaceProvider, useWorkspace } from "@/lib/store/use-workspace";
 import type { WireframeApp, DesignSystem, Platform, AgentStep } from "@/lib/types";
 
-import { Toolbar } from "@/components/workspace/Toolbar";
-import { CanvasActions } from "@/components/workspace/CanvasActions";
+import { WorkspaceTopbar } from "@/components/workspace/WorkspaceTopbar";
+import { WorkspaceSidebar } from "@/components/workspace/WorkspaceSidebar";
 import { Canvas, type WheelInput } from "@/components/workspace/Canvas";
 import { PropertyPanel } from "@/components/workspace/PropertyPanel";
-import { ChatBar } from "@/components/workspace/ChatBar";
-import { FloatingInput } from "@/components/workspace/FloatingInput";
 import { DesignSystemPanel } from "@/components/workspace/DesignSystemDialog";
 import { CodeView } from "@/components/workspace/CodeView";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 /* ── Screen HTML loader with retry ──────────────────────────
    S3 occasionally returns 500 on transient failures; retry 2x with backoff. */
@@ -51,6 +50,7 @@ type GenerateHandlers = {
   screenStart: (id: string, name: string) => void;
   htmlChunk: (screenId: string, chunk: string) => void;
   screenDone: (screenId: string, html: string) => void;
+  reasoning?: (screenId: string, text: string) => void;
 };
 
 async function consumeGenerateStream(
@@ -101,6 +101,9 @@ async function consumeGenerateStream(
           break;
         case "screen_done":
           on.screenDone(data.screenId as string, data.html as string);
+          break;
+        case "reasoning":
+          on.reasoning?.(data.screenId as string, data.text as string);
           break;
         case "error":
           throw new Error((data.message as string) || "Generation failed");
@@ -193,9 +196,23 @@ async function runGenerate(
       streamChunksRef.current.delete(screenId);
       finalizeStep({ status: "done", screenId });
     },
+    reasoning: (_screenId, text) => {
+      if (!currentStepId) return;
+      dispatch({
+        type: "UPDATE_AGENT_STEP",
+        messageId: agentMsgId,
+        stepId: currentStepId,
+        updates: { reasoning: text },
+      });
+    },
   };
 
   async function callGenerate(): Promise<Response> {
+    let referenceImage: string | null = null;
+    try {
+      referenceImage = sessionStorage.getItem(`wf-ref-image-${app.id}`);
+    } catch { /* ignore */ }
+
     const res = await fetch("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -203,9 +220,13 @@ async function runGenerate(
         name: app.name,
         description: app.description,
         projectId: app.id,
+        ...(referenceImage ? { image: referenceImage } : {}),
       }),
       signal,
     });
+
+    // One-shot: clear the reference image so retries/regens don't reuse it unexpectedly.
+    try { sessionStorage.removeItem(`wf-ref-image-${app.id}`); } catch { /* ignore */ }
     if (res.status === 403) {
       const errData = await res.json().catch(() => ({}));
       throw Object.assign(
@@ -295,6 +316,12 @@ function WorkspaceShell() {
   const handleIframeRef = useCallback((el: HTMLIFrameElement | null) => {
     iframeRef.current = el;
   }, []);
+
+  // Selecting an element on the canvas hands the right edge back to the
+  // Properties panel — close the Design panel so the two never stack.
+  useEffect(() => {
+    if (state.selectedElement) setDsOpen(false);
+  }, [state.selectedElement]);
 
   const handleFitView = useCallback(() => {
     fitViewRef.current?.();
@@ -460,53 +487,104 @@ function WorkspaceShell() {
     runGenerate(cleanApp, dispatch, streamChunksRef, forceUpdate, controller.signal);
   }, [dispatch, state.app, forceUpdate]);
 
+  async function handleShare() {
+    const res = await fetch("/api/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.app),
+    });
+    const { url } = await res.json();
+    await navigator.clipboard.writeText(window.location.origin + url);
+  }
+
+  async function handleExportHtml() {
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+    const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    for (const screen of state.app.screens) {
+      if (screen.html) zip.file(`${slug(screen.name)}.html`, screen.html);
+    }
+    if (state.app.designSystem) zip.file("design-system.json", JSON.stringify(state.app.designSystem, null, 2));
+    const index = `<!DOCTYPE html><html><head><title>${state.app.name}</title></head><body>${state.app.screens.map(s => `<a href="${slug(s.name)}.html">${s.name}</a>`).join("\n")}</body></html>`;
+    zip.file("index.html", index);
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `${slug(state.app.name)}-screens.zip`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleExportNextjs() {
+    const { exportNextjsZip } = await import("@/lib/export-nextjs");
+    await exportNextjsZip(state.app);
+  }
+
   return (
-    <div className="relative h-screen w-screen overflow-hidden font-sans text-foreground">
-      {/* Full-bleed canvas */}
-      <Canvas
-        streamChunks={streamChunksRef.current}
-        streamTick={streamTick}
-        onIframeRef={handleIframeRef}
-        fitViewRef={fitViewRef}
-        applyWheelRef={applyWheelRef}
-        focusScreenRef={focusScreenRef}
-      />
-
-      {/* Floating top bar — app name + screen jump */}
-      <Toolbar onFocusScreen={handleFocusScreen} />
-
-      {/* Floating left panel — glass chat/reasoning overlay */}
-      <ChatBar />
-
-      {/* Floating right actions */}
-      <CanvasActions
-        onRegenerate={handleRegenerate}
-        onToggleDesignSystem={() => setDsOpen((v) => !v)}
-        showDesignSystem={dsOpen}
+    <div className="workspace-light flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
+      {/* Full-width top bar */}
+      <WorkspaceTopbar
+        onFocusScreen={handleFocusScreen}
+        onUndo={() => dispatch({ type: "UNDO" })}
+        onRedo={() => dispatch({ type: "REDO" })}
+        canUndo={state.undoStack.length > 0}
+        canRedo={state.redoStack.length > 0}
+        onFitView={handleFitView}
         showCodeView={showCodeView}
         onToggleCode={() => setShowCodeView((v) => !v)}
-        onFitView={handleFitView}
-      />
-
-      {/* Floating bottom input */}
-      <FloatingInput
-        streamChunksRef={streamChunksRef}
-        forceCanvasUpdate={forceUpdate}
-        onStop={() => {
-          abortRef.current?.abort();
-          streamChunksRef.current.clear();
-          dispatch({ type: "SET_GENERATING", isGenerating: false });
+        showDesignSystem={dsOpen}
+        onToggleDesignSystem={() => {
+          // Design panel and Properties panel share the right edge — close
+          // the selection so they never stack on top of each other.
+          if (!dsOpen) dispatch({ type: "SELECT_ELEMENT", element: null });
+          setDsOpen((v) => !v);
         }}
+        onShare={handleShare}
+        onExportHtml={handleExportHtml}
+        onExportNextjs={handleExportNextjs}
+        onRegenerate={handleRegenerate}
+        isGenerating={state.isGenerating}
+        screenCount={state.app.screens.length}
+        hasDesignSystem={!!state.app.designSystem}
       />
 
-      {/* Property panel overlay */}
-      <PropertyPanel iframeRef={iframeRef} />
+      {/* Content: resizable sidebar + canvas */}
+      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
+        {/* Left chat sidebar */}
+        <ResizablePanel defaultSize="360px" minSize="300px" maxSize="560px">
+          <WorkspaceSidebar
+            streamChunksRef={streamChunksRef}
+            forceCanvasUpdate={forceUpdate}
+            focusScreen={handleFocusScreen}
+            onStop={() => {
+              abortRef.current?.abort();
+              streamChunksRef.current.clear();
+              dispatch({ type: "SET_GENERATING", isGenerating: false });
+            }}
+          />
+        </ResizablePanel>
 
-      {/* Code view overlay */}
-      {showCodeView && <CodeView onClose={() => setShowCodeView(false)} />}
+        <ResizableHandle withHandle />
 
-      {/* Design System floating panel */}
-      <DesignSystemPanel open={dsOpen} onClose={() => setDsOpen(false)} />
+        {/* Canvas area with floating overlays */}
+        <ResizablePanel minSize="40%" className="relative">
+          <Canvas
+            streamChunks={streamChunksRef}
+            streamTick={streamTick}
+            onIframeRef={handleIframeRef}
+            fitViewRef={fitViewRef}
+            applyWheelRef={applyWheelRef}
+            focusScreenRef={focusScreenRef}
+          />
+
+          {/* Property panel overlay (hidden while the design panel owns the right edge) */}
+          {!dsOpen && <PropertyPanel iframeRef={iframeRef} />}
+
+          {/* Code view overlay */}
+          {showCodeView && <CodeView onClose={() => setShowCodeView(false)} />}
+
+          {/* Design System floating panel */}
+          <DesignSystemPanel open={dsOpen} onClose={() => setDsOpen(false)} />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 }

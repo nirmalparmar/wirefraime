@@ -1,0 +1,31 @@
+{
+  "colors": {
+    "primary": "#0071e3",
+    "secondary": "#0066cc",
+    "background": "#ffffff",
+    "surface": "#f5f5f7",
+    "text": "#1d1d1f",
+    "textMuted": "#6e6e73",
+    "border": "#d2d2d7",
+    "success": "#16a34a",
+    "error": "#dc2626"
+  },
+  "fonts": {
+    "primary": "Outfit, system-ui, -apple-system, sans-serif",
+    "mono": "JetBrains Mono, ui-monospace, \"JetBrains Mono\", Menlo, monospace"
+  },
+  "layout": {
+    "borderRadius": "12px",
+    "borderRadiusLg": "18px",
+    "borderRadiusSm": "8px",
+    "shadow": "0 1px 3px rgba(0,0,0,0.06)",
+    "shadowLg": "0 4px 12px rgba(0,0,0,0.10)",
+    "spacingUnit": 8,
+    "cardPadding": "24px",
+    "sectionGap": "32px",
+    "buttonHeight": "44px",
+    "inputHeight": "40px",
+    "navStyle": "topbar",
+    "navHeight": "56px"
+  }
+}

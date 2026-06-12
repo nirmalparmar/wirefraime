@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "claude",
+  "name": "Claude",
+  "category": "AI & LLM",
+  "description": "Warm, literary, approachable. Coral accent on soft paper neutrals.",
+  "tags": [
+    "ai",
+    "warm",
+    "editorial",
+    "friendly"
+  ],
+  "fonts": {
+    "primary": "DM Sans",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "claude"
+  }
+}

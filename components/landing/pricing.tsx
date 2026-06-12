@@ -21,10 +21,10 @@ const PLANS: Plan[] = [
     name: "Pro",
     slug: "pro",
     tagline: "Everything you need to ship your first product.",
-    priceMonthly: 20,
+    priceMonthly: 12,
     featured: false,
     features: [
-      "150 screens / month",
+      "200 screens / month",
       "Full component library",
       "HTML & Next.js export",
       "PNG export per screen",
@@ -40,11 +40,12 @@ const PLANS: Plan[] = [
     priceMonthly: 40,
     featured: true,
     features: [
-      "350 screens / month",
-      "Everything in Pro",
-      "Advanced AI models",
-      "Custom design systems",
-      "Priority support",
+      "1000 screens / month",
+      "Full component library",
+      "HTML & Next.js export",
+      "PNG export per screen",
+      "Chat refinement",
+      "Design system generation",
     ],
     cta: "Start Ultra",
   },
@@ -71,7 +72,7 @@ function SparkleIcon() {
 /* ── Section ─────────────────────────────────────────────────── */
 
 export function Pricing() {
-  const [annual, setAnnual] = useState(true);
+  const [annual, setAnnual] = useState(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const { isSignedIn } = useAuth();
 
@@ -166,7 +167,7 @@ export function Pricing() {
                 {/* Featured marker */}
                 {card.featured && (
                   <span className="absolute right-6 top-6 inline-flex items-center gap-1.5 rounded-full bg-primary/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-primary md:right-7 md:top-7">
-                    <SparkleIcon />
+                    {/* <SparkleIcon /> */}
                     Most popular
                   </span>
                 )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AgentStep } from "@/lib/types";
 
 /* ── Status icons ─────────────────────────────────────────── */
@@ -87,17 +87,6 @@ function StepIcon({ status }: { status: AgentStep["status"] }) {
   }
 }
 
-/* ── Elapsed time formatter ──────────────────────────────── */
-
-function elapsed(steps: AgentStep[]): string {
-  if (steps.length === 0) return "";
-  const first = steps[0].timestamp;
-  const last = steps[steps.length - 1].timestamp;
-  const ms = last - first;
-  if (ms < 1000) return "";
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
 /* ── Main component ──────────────────────────────────────── */
 
 interface AgentThinkingBlockProps {
@@ -112,12 +101,23 @@ export function AgentThinkingBlock({
   defaultExpanded = true,
 }: AgentThinkingBlockProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // Live clock: re-render once a second while generating so elapsed timers tick
+  // and the panel never looks frozen during long model calls.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isLive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isLive]);
 
   if (steps.length === 0) return null;
 
   const doneCount = steps.filter((s) => s.status === "done").length;
   const allDone = doneCount === steps.length && !isLive;
-  const time = elapsed(steps);
+  const firstTs = steps[0].timestamp;
+  const endTs = isLive ? now : steps[steps.length - 1].timestamp;
+  const totalMs = endTs - firstTs;
+  const time = totalMs >= 1000 ? `${(totalMs / 1000).toFixed(isLive ? 0 : 1)}s` : "";
 
   return (
     <div className="rounded-xl border border-border bg-card/80 backdrop-blur-sm">
@@ -142,7 +142,7 @@ export function AgentThinkingBlock({
               : "Finished with errors"}
         </span>
 
-        {time && !isLive && (
+        {time && (
           <span className="text-[10px] tabular-nums text-muted-foreground">
             {time}
           </span>
@@ -194,6 +194,16 @@ export function AgentThinkingBlock({
                   <span className="ml-1.5 text-muted-foreground/60">
                     {step.detail}
                   </span>
+                )}
+                {step.status === "running" && now - step.timestamp >= 2000 && (
+                  <span className="ml-1.5 tabular-nums text-muted-foreground/50">
+                    · {Math.floor((now - step.timestamp) / 1000)}s
+                  </span>
+                )}
+                {step.reasoning && (
+                  <div className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-1 font-mono text-[10.5px] leading-snug text-muted-foreground/80">
+                    {step.reasoning}
+                  </div>
                 )}
               </div>
             </div>

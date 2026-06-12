@@ -3,21 +3,34 @@ import type { Content, Part } from "@google/genai";
 import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
-import { loadSkillFromDir, streamDesign } from "./adk-helpers";
+import { Agent, SkillToolset, loadSkillFromDir, streamDesign } from "./adk-helpers";
 import {
   generateHtmlHead,
   injectSharedCSS,
+  enforceSharedShell,
   extractReferencePatterns,
   extractMultiScreenPatterns,
 } from "../design-template";
 import {
-  extractJson,
+  tryParseJsonLoose,
   stripLeadingFence,
   validateAndRepairHtml,
   applyPatchOps,
 } from "./html-utils";
 import { randomUUID } from "crypto";
 import path from "path";
+import { loadCraftSections } from "../design/craft";
+import {
+  lintHtml,
+  hasBlockingFindings,
+  buildLintFixInstruction,
+  summarizeFindings,
+} from "../design/lint-artifact";
+import type { LintFinding, ArtifactType } from "../design/types";
+import { composeSystemPrompt } from "../design/compose-prompt";
+
+/** Lint-driven auto-fix pass after generation. Disable with DESIGN_LINT_FIX=0. */
+const LINT_FIX_ENABLED = process.env.DESIGN_LINT_FIX !== "0";
 
 /**
  * Model selection by task.
@@ -29,7 +42,7 @@ import path from "path";
  * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
  */
 const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "gemini-3.1-pro-preview";
+const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "moonshotai/kimi-k2.6";
 const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────
@@ -38,6 +51,9 @@ const DesignPlanSchema = z.object({
   platform: z
     .enum(["web", "mobile", "tablet"])
     .describe("Target platform inferred from the app description. Use 'mobile' for phone apps, 'tablet' for iPad/tablet apps, 'web' for desktop/web apps. Default to 'web' if unclear."),
+  artifactType: z
+    .enum(["landing-page", "app-ui"])
+    .describe("Classify the artifact shape. 'landing-page' = a single marketing/landing/pricing/homepage that sells a product (one long-scroll page, no app chrome). 'app-ui' = a dashboard, tool, mobile app, or any multi-screen product with navigation. When the user asks for 'a landing page', 'homepage', 'marketing site', or 'pricing page' → landing-page. When they describe a CRM, dashboard, app, or tool → app-ui."),
   designSystem: z.object({
     colors: z.object({
       primary: z.string(),
@@ -68,10 +84,20 @@ const DesignPlanSchema = z.object({
       navStyle: z.enum(["sidebar", "topbar", "bottom-tabs", "none"]).describe("Navigation pattern"),
       navHeight: z.string().describe("Navigation bar height, e.g. '56px'"),
     }).optional(),
+    shell: z.object({
+      navHtml: z.string().describe(
+        "The COMPLETE shared navigation element reused VERBATIM on every screen. A single <aside> (sidebar), <header> (topbar), or <nav> (bottom-tabs) element matching navStyle. MUST use Tailwind semantic tokens (bg-surface, text-foreground, border-border, text-primary, bg-primary-soft) and Iconoir icons. Include ONE link per planned screen, each carrying data-nav=\"<exact screen name>\" and the active-state pattern [&.active]:text-primary [&.active]:bg-primary-soft [&.active]:font-semibold. Omit (empty string) only when navStyle is 'none'."
+      ),
+    }).optional(),
+    componentLibrary: z.object({
+      buttonHtml: z.string().describe("A representative primary button using the design system classes."),
+      cardHtml: z.string().describe("A representative card wrapping a title, description, and action button."),
+      inputHtml: z.string().describe("A representative text input field with a label."),
+    }).describe("The definitive component library to be used across all screens.").optional(),
   }),
   screens: z.array(
     z.object({ id: z.string(), name: z.string(), description: z.string() })
-  ),
+  ).describe("The screens to generate. Match the user's intended scope EXACTLY: if they asked for a single page (e.g. 'a landing page', 'login screen') return exactly 1 screen; if they gave a count, return that count; only return a multi-screen set when they describe a full product/app. Prefer fewer screens when ambiguous — never pad with filler."),
 });
 
 const ChatPlanSchema = z.object({
@@ -115,7 +141,7 @@ type Critique = z.infer<typeof CritiqueSchema>;
 let cachedSkillContent: string | null = null;
 async function getSkillInstructions(): Promise<string> {
   if (!cachedSkillContent || process.env.NODE_ENV === "development") {
-    const skillPath = path.resolve(process.cwd(), "skill/frontend-design");
+    const skillPath = path.resolve(process.cwd(), ".agents/skills/frontend-design");
     const skill = await loadSkillFromDir(skillPath);
     cachedSkillContent = skill.instructions;
     console.log(`[DesignAgent] Skill loaded: ${cachedSkillContent.length} chars`);
@@ -262,20 +288,22 @@ EDITABILITY RULES (so users can click + edit in the live editor):
   - Keep nesting shallow: aim for 4–5 levels max from <body> to a leaf button/text.
   - Cards/list-items should be a SINGLE element with all styling — not a card-div wrapping
     a content-div wrapping a header-div wrapping a title-span.
-  - Add data-wf-name attributes to top-level structural blocks ONLY when they aren't already
-    obvious from semantics — e.g. <section data-wf-name="hero">.
+  - You MUST add data-wf-name="[Descriptive Name]" attributes to ALL major structural containers (sections, cards, forms, headers) to anchor edits. Example: <section data-wf-name="HeroSection">, <div data-wf-name="ProductCard">.
 `;
 
 // ── Agents (lazy-initialized with skill) ──────────────────────
 
-let _designSystemAgent: LlmAgent | null = null;
-async function getDesignSystemAgent(): Promise<LlmAgent> {
+let _designSystemAgent: Agent | null = null;
+async function getDesignSystemAgent(): Promise<Agent> {
   if (!_designSystemAgent) {
-    const skillInstr = await getSkillInstructions();
-    _designSystemAgent = new LlmAgent({
+    const skillPath = path.resolve(process.cwd(), ".agents/skills/hallmark");
+    const hallmarkSkill = await loadSkillFromDir(skillPath);
+    const mySkillToolset = new SkillToolset({ skills: [hallmarkSkill] });
+
+    _designSystemAgent = new Agent({
       name: "design_system_agent",
       model: PLANNING_MODEL,
-      instruction: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
+      instructions: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
 
 Before choosing colors/fonts, think about:
 - The app's domain, audience, and emotional tone
@@ -306,12 +334,25 @@ LAYOUT TOKEN RULES:
 - Button height: 40-44px for compact, 48-52px for standard mobile, 56px for spacious
 - All values must be concrete CSS values (e.g. "12px", "0 1px 3px rgba(0,0,0,0.06)")
 
-=== DESIGN SKILL ===
-${skillInstr}
+SHARED NAVIGATION (shell.navHtml) — this is reused VERBATIM on EVERY screen, so design it once and well:
+- Match navStyle: sidebar → a single <aside>; topbar → a single <header>; bottom-tabs → a single <nav>; if navStyle is "none", set navHtml to "".
+- Use ONLY Tailwind semantic tokens (bg-surface, text-foreground, text-muted, border-border, text-primary, bg-primary-soft) — never hardcoded colors. Use Iconoir icons (<i class="iconoir-home"></i>), never emoji.
+- Include exactly ONE nav link per planned screen. Each link MUST carry data-nav="<that screen's exact name>" and the active-state utilities so the current screen highlights:
+  [&.active]:text-primary [&.active]:bg-primary-soft [&.active]:font-semibold
+- Include the product/brand name (or a logo mark) in the nav.
+- Sidebar example shape:
+  <aside class="w-64 shrink-0 flex flex-col bg-surface border-r border-border py-5 gap-1">
+    <div class="px-5 pb-4 text-lg font-bold text-foreground">BrandName</div>
+    <a data-nav="Dashboard" class="flex items-center gap-3 px-5 py-2.5 text-[15px] text-muted rounded-btn mx-2 transition hover:bg-background hover:text-foreground [&.active]:text-primary [&.active]:bg-primary-soft [&.active]:font-semibold"><i class="iconoir-dashboard-dots text-[20px]"></i>Dashboard</a>
+    ...one <a> per screen...
+  </aside>
+- Bottom-tabs: a fixed <nav class="fixed bottom-0 left-0 right-0 ..."> with one tab per primary screen (4-5 max).
+- Keep it self-contained: no <style>, no <script>, no comments.
 
 Return valid JSON matching the required schema. No markdown, no explanation.`,
+      tools: [mySkillToolset],
       outputSchema: DesignPlanSchema,
-      generateContentConfig: { maxOutputTokens: 4096, temperature: 0.7 },
+      temperature: 0.7,
     });
   }
   return _designSystemAgent;
@@ -352,7 +393,9 @@ When in doubt and the request mentions "all", "every", "across", "everywhere", o
 Otherwise, use the exact screen ID from the provided list.
 Return valid JSON matching the required schema.`,
   outputSchema: ChatPlanSchema,
-  generateContentConfig: { maxOutputTokens: 1024, temperature: 0.2 },
+  // Thinking models consume output budget on reasoning — keep headroom or the
+  // visible JSON gets truncated/empty.
+  generateContentConfig: { maxOutputTokens: 8192, temperature: 0.2 },
 });
 
 const patchAgent = new LlmAgent({
@@ -377,7 +420,7 @@ CRITICAL RULES:
 
 Return valid JSON matching the required schema. No markdown, no explanation.`,
   outputSchema: PatchOpsSchema,
-  generateContentConfig: { maxOutputTokens: 4096, temperature: 0.1 },
+  generateContentConfig: { maxOutputTokens: 16384, temperature: 0.1 },
 });
 
 const criticAgent = new LlmAgent({
@@ -401,6 +444,7 @@ CRITICAL FAILURES (auto-fail, score ≤ 4):
 - Completely empty sections (<div></div> with no content)
 - Text smaller than 12px
 - Severely misaligned layout (e.g. overlapping elements)
+- Fails to match the Component Library patterns (if provided).
 
 passes = true iff score >= 7 AND no critical failures.
 
@@ -408,13 +452,15 @@ If passes=false, write a concise refineInstruction (1-3 sentences) telling the g
 
 Return valid JSON matching the required schema.`,
   outputSchema: CritiqueSchema,
-  generateContentConfig: { maxOutputTokens: 1024, temperature: 0.2 },
+  generateContentConfig: { maxOutputTokens: 4096, temperature: 0.2 },
 });
 
 let _screenEditorInstr: string | null = null;
 async function getScreenEditorInstructions(): Promise<string> {
   if (!_screenEditorInstr) {
     const skillInstr = await getSkillInstructions();
+    const craft = loadCraftSections(["anti-ai-slop", "typography", "color"]);
+    const craftBlock = craft ? `\n\n${craft}` : "";
     _screenEditorInstr = `You are an expert frontend editor. You modify HTML screens with surgical precision while maintaining design excellence.
 
 ${TAILWIND_COMPONENT_GUIDE}
@@ -429,53 +475,19 @@ EDITING RULES:
 - ICONS: ALWAYS use Iconoir classes. NEVER emoji or unicode.
 
 === DESIGN SKILL ===
-${skillInstr}
+${skillInstr}${craftBlock}
 
 Output ONLY the complete modified HTML starting with <!DOCTYPE html>. No markdown, no explanation.`;
   }
   return _screenEditorInstr;
 }
 
-let _screenGenInstructions: string | null = null;
+/**
+ * App-UI generation system prompt. Delegates to the composer (Shape skill +
+ * tailwind/token guide + craft). The composer caches per artifact type.
+ */
 async function getScreenGenInstructions(): Promise<string> {
-  if (!_screenGenInstructions) {
-    const skillInstr = await getSkillInstructions();
-    _screenGenInstructions = `You are an elite frontend designer creating production-grade UI screens.
-You generate complete, self-contained HTML that looks like REAL shipped products — not wireframes, not mockups, but ACTUAL premium app screens.
-
-QUALITY BAR: Think Apple Music, Spotify, Stripe Dashboard, Linear, Notion, Nike App. Every screen must look like it was designed by a senior designer at a top company. If it looks like a template or wireframe, you have FAILED.
-
-${TAILWIND_COMPONENT_GUIDE}
-
-VISUAL RICHNESS — MANDATORY:
-- Use real images from Unsplash with specific photo URLs matching content (album art, food, products, landscapes). NEVER colored rectangles or placeholder shapes.
-- Real avatars: https://i.pravatar.cc/80?u=unique-name
-- Cards need depth — proper shadow-card, rounded-card, hover states, clear hierarchy
-- Decorative gradients (via bg-gradient-to-br from-primary to-secondary) ONLY when aesthetically purposeful
-
-LAYOUT EXCELLENCE:
-- Every screen needs clear visual hierarchy — ONE primary focus element
-- Generous negative space — cramped layouts look cheap
-- Align to grid — consistent gutters (Tailwind gap-4, gap-6, gap-8)
-- Mobile: full-width edge-to-edge, safe areas, bottom nav with pb-20 on content
-- Web: max-width containers (max-w-6xl, max-w-7xl), sidebar + content layouts
-
-CONTENT — REALISTIC AND DENSE:
-- Real names (Sarah Chen, Marcus Williams, Ada Patel), real numbers ($4,280.50), real dates (Mar 15, 2026)
-- ZERO Lorem ipsum, "User 1", "$XX.XX", or placeholder text
-- Music home needs 15+ songs; e-commerce needs 8+ products; dashboard needs real metrics
-
-DESIGN CONSISTENCY:
-- Every screen MUST look like it belongs to the same product
-- Same Tailwind class patterns for nav, cards, buttons, typography
-- If a reference screen is provided, MATCH its class patterns character-by-character
-
-Output ONLY raw HTML starting with <!DOCTYPE html>. No markdown.
-
-=== DESIGN SKILL ===
-${skillInstr}`;
-  }
-  return _screenGenInstructions;
+  return composeSystemPrompt("app-ui", TAILWIND_COMPONENT_GUIDE);
 }
 
 // ── Runner helpers ────────────────────────────────────────────
@@ -527,16 +539,83 @@ async function collectAgent(
   return result;
 }
 
-async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, label = "task"): Promise<T> {
+  let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      if (attempt === retries) throw err;
-      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      lastErr = err;
+      console.warn(
+        `[withRetry] ${label} attempt ${attempt + 1}/${retries + 1} failed:`,
+        err instanceof Error ? err.message : err
+      );
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
     }
   }
-  throw new Error("unreachable");
+  throw lastErr;
+}
+
+/**
+ * Deterministic last-resort design plan, used only when the planner model
+ * fails all retries. Keeps generation alive with a tasteful neutral system —
+ * the screen generator still produces real content from the description.
+ */
+function buildFallbackDesignPlan(name: string, description: string): DesignPlan {
+  const text = `${name} ${description}`.toLowerCase();
+  const platform: DesignPlan["platform"] =
+    /\b(mobile app|ios|android|iphone|phone app|react native|flutter)\b/.test(text)
+      ? "mobile"
+      : /\b(ipad|tablet)\b/.test(text)
+        ? "tablet"
+        : "web";
+  const artifactType: DesignPlan["artifactType"] =
+    /\b(landing|marketing|homepage|home page|pricing page|waitlist)\b/.test(text)
+      ? "landing-page"
+      : "app-ui";
+
+  return {
+    platform,
+    artifactType,
+    designSystem: {
+      colors: {
+        primary: "#264653",
+        secondary: "#E76F51",
+        background: "#FAF8F5",
+        surface: "#FFFFFF",
+        text: "#1F2421",
+        textMuted: "#6B7271",
+        border: "#E5E1DA",
+        success: "#2A9D8F",
+        error: "#C44536",
+      },
+      fonts: {
+        primary: "Sora, system-ui, sans-serif",
+        mono: "JetBrains Mono, monospace",
+      },
+      layout: {
+        borderRadius: "12px",
+        borderRadiusLg: "16px",
+        borderRadiusSm: "8px",
+        shadow: "0 1px 3px rgba(0,0,0,0.06)",
+        shadowLg: "0 4px 12px rgba(0,0,0,0.1)",
+        spacingUnit: 8,
+        cardPadding: "24px",
+        sectionGap: "32px",
+        buttonHeight: "44px",
+        inputHeight: "40px",
+        navStyle: "none",
+        navHeight: "56px",
+      },
+    },
+    screens: [
+      {
+        id: "screen-1",
+        name: artifactType === "landing-page" ? "Home" : "Dashboard",
+        description: description || `Main screen for ${name}`,
+      },
+    ],
+  };
 }
 
 // ── Public API ────────────────────────────────────────────────
@@ -548,11 +627,20 @@ export async function generateDesignSystem(
   const prompt = `Create a design system and screen plan for this app:
 App: ${name} — ${description}
 
-SCREEN PLANNING RULES:
-- Analyze the app description and plan ONLY the screens that make sense for THIS specific app
-- A simple utility might need 3-4 screens, a full SaaS product might need 6-8, a landing page might need just 1-2
+SCREEN PLANNING RULES (read carefully — respecting the user's intent is the #1 priority):
+- FIRST, detect the user's intended SCOPE from their request. This OVERRIDES every heuristic below:
+  - If they name a SINGLE page/screen ("a landing page", "create landing page", "login screen", "a pricing page", "build me a dashboard") → plan EXACTLY 1 screen. Do NOT invent supporting screens.
+  - If they give an explicit count ("3 screens", "two pages", "a few screens") → plan EXACTLY that many.
+  - If they describe a multi-screen PRODUCT or APP ("a CRM", "a banking app", "a SaaS tool with onboarding") → plan the full set of screens that product needs.
+  - When the request is ambiguous, prefer FEWER screens, not more. Never pad with filler.
+- Singular nouns like "a landing page" / "the homepage" / "a login screen" mean ONE screen — never expand them into a flow unless the user explicitly asks for more.
 - Each screen must have a clear, distinct purpose — no filler screens
 - Name screens descriptively (e.g. "Transaction History", "Workout Tracker", "Chat Inbox")
+
+ARTIFACT TYPE (set artifactType):
+- "landing-page" → the user wants a single marketing/landing/pricing/home page that SELLS something ("a landing page", "homepage", "marketing site", "pricing page", "waitlist page"). Plan exactly 1 screen named "Home" (or the page's purpose). navStyle should be "topbar" or "none" — a landing page has a marketing header, not app chrome.
+- "app-ui" → the user wants a dashboard, tool, mobile app, or multi-screen product. Use the appropriate navStyle (sidebar/topbar/bottom-tabs).
+- When in doubt between the two, prefer "app-ui" unless the words landing/marketing/pricing/homepage appear.
 
 PLATFORM DETECTION:
 - If the description mentions "mobile app", "iOS", "Android", "phone", "React Native", "Flutter" → platform: "mobile"
@@ -565,26 +653,46 @@ LAYOUT TOKENS (required, under designSystem.layout):
 - These become Tailwind utilities (rounded-card, shadow-card, h-btn, p-card, h-nav) used throughout every screen
 - Choose values that match the app's aesthetic
 
+SHARED NAVIGATION (required under designSystem.shell.navHtml, unless navStyle is "none"):
+- Generate the ONE navigation element that every screen above will share verbatim.
+- It MUST contain one link per screen you planned, each with data-nav set to that screen's exact name and the active-state utilities. This is what keeps the menu bar identical across all screens.
+- Match designSystem.layout.navStyle (sidebar → <aside>, topbar → <header>, bottom-tabs → <nav>).
+
+COMPONENT LIBRARY (required under designSystem.componentLibrary):
+- Provide robust HTML snippets for buttonHtml, cardHtml, and inputHtml using Tailwind semantic tokens. These act as blueprints to enforce consistency across all generated screens.
+
 COLOR VALUES: use HEX format only (#RRGGBB). No rgba(), no hsl().
 FONTS: use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-serif".`;
 
-  return withRetry(async () => {
-    const dsAgent = await getDesignSystemAgent();
-    const raw = await collectAgent(dsAgent, "wirefraime-design", prompt);
-    let json: unknown;
-    try {
-      json = JSON.parse(extractJson(raw));
-    } catch {
-      console.error("Failed to parse design plan JSON:", raw.slice(0, 500));
-      throw new Error("Design system returned invalid JSON — retrying");
-    }
-    const parsed = DesignPlanSchema.safeParse(json);
-    if (!parsed.success) {
-      console.error("Design plan validation failed:", parsed.error.flatten());
-      throw new Error("Design system generation returned invalid schema");
-    }
-    return parsed.data;
-  });
+  try {
+    return await withRetry(async () => {
+      const dsAgent = await getDesignSystemAgent();
+      const result = await dsAgent.chat(prompt);
+      const raw = result.text;
+      const json = tryParseJsonLoose(raw);
+      if (json == null) {
+        console.error(
+          `Failed to parse design plan JSON (${raw.length} chars):`,
+          raw.slice(0, 500) || "(empty response)"
+        );
+        throw new Error("Design system returned invalid JSON — retrying");
+      }
+      const parsed = DesignPlanSchema.safeParse(json);
+      if (!parsed.success) {
+        console.error("Design plan validation failed:", parsed.error.flatten());
+        throw new Error("Design system generation returned invalid schema");
+      }
+      return parsed.data;
+    }, 2, "design-system");
+  } catch (err) {
+    // Never hard-fail the whole generation over the planning step — degrade to
+    // a neutral deterministic plan and let the screen generator do its job.
+    console.error(
+      "[DesignAgent] Design system planning failed after all retries — using fallback plan:",
+      err instanceof Error ? err.message : err
+    );
+    return buildFallbackDesignPlan(name, description);
+  }
 }
 
 /**
@@ -603,10 +711,27 @@ export async function generateScreenHtml(
   platform: Platform = "web",
   onHtmlChunk?: (screenId: string, chunk: string) => void,
   referenceScreensHtml?: string | string[],
-  enableCritique = true
+  referenceImage?: { data: string; mimeType: string },
+  onLint?: (screenId: string, findings: LintFinding[]) => void,
+  brandContext?: string,
+  onReasoning?: (screenId: string, text: string) => void
 ): Promise<string> {
   const vp = VIEWPORTS[platform];
   const headTemplate = generateHtmlHead(designSystem, platform);
+
+  // Shared shell — the nav reused verbatim across every screen.
+  const navHtml = designSystem.shell?.navHtml?.trim();
+  const navStyle = designSystem.layout?.navStyle;
+  const hasSharedNav = !!navHtml && !!navStyle && navStyle !== "none";
+  const layoutHint =
+    navStyle === "sidebar"
+      ? 'Body is a flex row: <body class="min-h-screen flex bg-background text-foreground font-sans"> with the <aside> as the FIRST child and a <main class="flex-1 min-w-0 overflow-y-auto"> holding this screen\'s content.'
+      : navStyle === "bottom-tabs"
+        ? "Place the <nav> fixed at the bottom; give the content wrapper pb-24 so it clears the tab bar."
+        : "Place the <header> at the top (sticky top-0 z-10); this screen's content goes below it in <main>.";
+  const sharedNavCtx = hasSharedNav
+    ? `\n\nSHARED NAVIGATION — include this element VERBATIM (do not redesign or rename it). It is identical on every screen. Add the "active" class to its data-nav="${screenName}" link so this screen is highlighted. ${layoutHint}\n${navHtml}\n`
+    : "";
 
   // Build reference context. Accepts either a single HTML string (legacy) or an array
   // for multi-screen consistency.
@@ -620,6 +745,17 @@ export async function generateScreenHtml(
     : refHtmls.length === 1
       ? `\n\n${extractReferencePatterns(refHtmls[0])}\n`
       : "";
+
+  const componentLibraryCtx = designSystem.componentLibrary ? `\n\nCOMPONENT LIBRARY — Use these exact HTML patterns for elements across all screens to ensure absolute consistency:\n
+Button:
+${designSystem.componentLibrary.buttonHtml}
+
+Card:
+${designSystem.componentLibrary.cardHtml}
+
+Input:
+${designSystem.componentLibrary.inputHtml}
+` : "";
 
   const platformGuidance = platform === "mobile"
     ? `MOBILE (${vp.w}×${vp.h} — iPhone 14):
@@ -640,12 +776,14 @@ export async function generateScreenHtml(
   - Cards in grids: grid-cols-2/3/4 with gap-6 or gap-8
   - Hover states on ALL interactive elements`;
 
+  const brandCtx = brandContext ? `\n${brandContext}\n` : "";
+
   const prompt = `Generate a complete, self-contained HTML document for the "${screenName}" screen of "${appName}".
 
 Screen purpose: ${screenDescription}
 App context: ${appDescription}
 Platform: ${platform} (${vp.w}×${vp.h})
-
+${brandCtx}
 1. Use this EXACT <head> section verbatim — it loads Tailwind, the semantic tokens, fonts, and Iconoir:
 ${headTemplate}
 
@@ -656,33 +794,174 @@ ${headTemplate}
 4. Do NOT write custom <style> blocks that override component appearance. All style comes from Tailwind classes + the injected semantic tokens.
 
 ${platformGuidance}
-
+${sharedNavCtx}
 CONTENT DENSITY (non-negotiable):
 - Fill screens with REAL content at realistic density
 - Use Iconoir icons (never emoji)
 - Real names (Sarah Chen, Marcus Williams, Ada Patel), prices ($4,280.50), dates (Mar 15, 2026)
-${referenceCtx}
+${componentLibraryCtx}${referenceCtx}
 
+${referenceImage ? "\nThe user attached a REFERENCE IMAGE. Match its visual style, layout, color mood, and composition as closely as the design system allows.\n" : ""}
 Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
   const sysInstr = await getScreenGenInstructions();
-  const html = await streamScreen(sysInstr, prompt, screenId, onHtmlChunk);
-  let finalHtml = injectSharedCSS(html, designSystem, platform);
+  const html = await streamScreen(sysInstr, prompt, screenId, onHtmlChunk, {
+    image: referenceImage,
+    onReasoning: onReasoning ? (t) => onReasoning(screenId, t) : undefined,
+  });
 
-  if (enableCritique) {
-    finalHtml = await critiqueAndRefine(
-      finalHtml,
-      screenName,
-      screenDescription,
-      sysInstr,
-      designSystem,
-      platform,
-      screenId,
-      onHtmlChunk
-    );
+  // Deterministic post-processing: inject base CSS + tailwind config, then swap
+  // in the canonical shared shell (active item toggled).
+  const finalize = (raw: string) =>
+    enforceSharedShell(injectSharedCSS(raw, designSystem, platform), navHtml, navStyle, screenName);
+
+  return lintAndMaybeFix(finalize(html), finalize, screenId, onLint);
+}
+
+/**
+ * Shared post-processing: lint the finalized HTML and, if it has P0 (blocking)
+ * findings, run one targeted fix pass and re-finalize. Reports findings via
+ * onLint. Used by both the app-ui and landing-page generation paths.
+ */
+async function lintAndMaybeFix(
+  finalHtml: string,
+  finalize: (raw: string) => string,
+  screenId: string,
+  onLint?: (screenId: string, findings: LintFinding[]) => void
+): Promise<string> {
+  let findings = lintHtml(finalHtml);
+  if (findings.length) console.warn(`[${screenId}] lint: ${summarizeFindings(findings)}`);
+
+  if (LINT_FIX_ENABLED && hasBlockingFindings(findings)) {
+    const fixed = await runLintFixPass(finalHtml, findings, screenId);
+    if (fixed) {
+      finalHtml = finalize(fixed);
+      findings = lintHtml(finalHtml);
+      console.log(`[${screenId}] lint after fix: ${summarizeFindings(findings)}`);
+    }
   }
-
+  onLint?.(screenId, findings);
   return finalHtml;
+}
+
+/**
+ * Landing-page generation: ONE long-scroll marketing page (no shared shell, no
+ * multi-screen reference). Uses the landing-page composed system prompt.
+ */
+export async function generateLandingHtml(
+  screenId: string,
+  screenName: string,
+  screenDescription: string,
+  appName: string,
+  appDescription: string,
+  designSystem: DesignSystem,
+  platform: Platform = "web",
+  onHtmlChunk?: (screenId: string, chunk: string) => void,
+  _referenceScreensHtml?: string | string[],
+  referenceImage?: { data: string; mimeType: string },
+  onLint?: (screenId: string, findings: LintFinding[]) => void,
+  brandContext?: string,
+  onReasoning?: (screenId: string, text: string) => void
+): Promise<string> {
+  const headTemplate = generateHtmlHead(designSystem, platform);
+  const brandCtx = brandContext ? `\n${brandContext}\n` : "";
+
+  const prompt = `Generate a complete, self-contained, single-page marketing/landing page as ONE long-scroll HTML document for "${appName}".
+
+Page purpose: ${screenDescription || appDescription}
+Product context: ${appDescription}
+${brandCtx}
+1. Use this EXACT <head> section verbatim — it loads Tailwind, the semantic tokens, fonts, and Iconoir:
+${headTemplate}
+
+2. After </head>, build the FULL landing page inside <body class="min-h-screen bg-background text-foreground font-sans">: sticky marketing header → hero → supporting sections → final CTA band → footer (see the system instructions for the section playbook). This is ONE page — no app sidebar, no bottom tabs, no dashboard chrome.
+
+3. Use Tailwind semantic tokens for ALL styling — bg-primary, text-foreground, bg-surface, border-border, rounded-card, shadow-card. No hardcoded palette colors, no ds-* classes, no <style> blocks overriding components.
+
+4. Real imagery (Unsplash), Iconoir icons (never emoji), honest specific copy (no invented metrics, no filler). Fully responsive — stacks to one column on mobile.
+${referenceImage ? "\nThe user attached a REFERENCE IMAGE — match its visual style, layout, color mood, and composition as closely as the design system allows.\n" : ""}
+Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
+
+  const sysInstr = composeSystemPrompt("landing-page", TAILWIND_COMPONENT_GUIDE);
+  const html = await streamScreen(sysInstr, prompt, screenId, onHtmlChunk, {
+    image: referenceImage,
+    onReasoning: onReasoning ? (t) => onReasoning(screenId, t) : undefined,
+  });
+
+  // No shared-shell enforcement for a landing page — just inject base CSS + tw config.
+  const finalize = (raw: string) => injectSharedCSS(raw, designSystem, platform);
+  return lintAndMaybeFix(finalize(html), finalize, screenId, onLint);
+}
+
+/**
+ * Generation dispatcher — routes by artifact shape so landing pages and app
+ * screens each get their purpose-built pipeline. The route calls this.
+ */
+export async function generateScreen(
+  artifactType: ArtifactType,
+  screenId: string,
+  screenName: string,
+  screenDescription: string,
+  appName: string,
+  appDescription: string,
+  designSystem: DesignSystem,
+  platform: Platform = "web",
+  onHtmlChunk?: (screenId: string, chunk: string) => void,
+  referenceScreensHtml?: string | string[],
+  referenceImage?: { data: string; mimeType: string },
+  onLint?: (screenId: string, findings: LintFinding[]) => void,
+  brandContext?: string,
+  onReasoning?: (screenId: string, text: string) => void
+): Promise<string> {
+  const fn = artifactType === "landing-page" ? generateLandingHtml : generateScreenHtml;
+  return fn(
+    screenId,
+    screenName,
+    screenDescription,
+    appName,
+    appDescription,
+    designSystem,
+    platform,
+    onHtmlChunk,
+    referenceScreensHtml,
+    referenceImage,
+    onLint,
+    brandContext,
+    onReasoning
+  );
+}
+
+/**
+ * Single targeted fix pass: re-prompt the model to correct ONLY the P0 lint
+ * findings, preserving everything else. Returns corrected HTML, or null on
+ * failure (caller keeps the original).
+ */
+async function runLintFixPass(
+  html: string,
+  findings: LintFinding[],
+  screenId: string
+): Promise<string | null> {
+  const instruction = buildLintFixInstruction(findings);
+  if (!instruction) return null;
+  try {
+    const sysInstr = await getScreenEditorInstructions();
+    const prompt = `${instruction}\n\nHTML to fix:\n${html}\n\nOutput ONLY the corrected, complete HTML starting with <!DOCTYPE html>. No markdown.`;
+    let out = "";
+    for await (const chunk of streamDesign(sysInstr, prompt, {
+      model: STREAMING_MODEL,
+      temperature: 0.3,
+      maxOutputTokens: 65536,
+    })) {
+      out += chunk;
+    }
+    out = out.replace(/^\s*```(?:html)?\s*/i, "").replace(/```\s*$/, "").trim();
+    if (!out.includes("<")) return null;
+    const { repaired } = validateAndRepairHtml(out);
+    return repaired || null;
+  } catch (e) {
+    console.warn(`[${screenId}] lint fix pass failed:`, e);
+    return null;
+  }
 }
 
 /**
@@ -694,27 +973,55 @@ async function streamScreen(
   prompt: string,
   screenId: string,
   onHtmlChunk?: (screenId: string, chunk: string) => void,
-  opts?: { image?: { data: string; mimeType: string }; maxTokens?: number }
+  opts?: {
+    image?: { data: string; mimeType: string };
+    maxTokens?: number;
+    onReasoning?: (text: string) => void;
+  }
 ): Promise<string> {
+  // Near-empty output (provider hiccup, early stream abort) gets ONE retry.
+  // Threshold is low enough that a retry never duplicates meaningful content
+  // in the live preview, and the final srcdoc swap replaces it anyway.
+  const MIN_HTML_CHARS = 400;
   let fullHtml = "";
-  let isFirstChunk = true;
 
-  for await (let chunk of streamDesign(sysInstr, prompt, {
-    model: STREAMING_MODEL,
-    temperature: 0.7,
-    maxOutputTokens: opts?.maxTokens ?? 65536,
-    image: opts?.image,
-  })) {
-    if (isFirstChunk) {
-      chunk = stripLeadingFence(chunk);
-      isFirstChunk = false;
-    }
-    fullHtml += chunk;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    fullHtml = "";
+    let isFirstChunk = true;
     try {
-      onHtmlChunk?.(screenId, chunk);
-    } catch {
-      /* SSE closed, keep collecting */
+      for await (let chunk of streamDesign(sysInstr, prompt, {
+        model: STREAMING_MODEL,
+        temperature: 0.7,
+        maxOutputTokens: opts?.maxTokens ?? 65536,
+        image: opts?.image,
+        onReasoning: opts?.onReasoning,
+      })) {
+        if (isFirstChunk) {
+          chunk = stripLeadingFence(chunk);
+          isFirstChunk = false;
+        }
+        fullHtml += chunk;
+        try {
+          onHtmlChunk?.(screenId, chunk);
+        } catch {
+          /* SSE closed, keep collecting */
+        }
+      }
+    } catch (err) {
+      if (attempt === 0 && fullHtml.trim().length < MIN_HTML_CHARS) {
+        console.warn(`[${screenId}] stream failed early (${fullHtml.length} chars) — retrying:`, err);
+        continue;
+      }
+      throw err;
     }
+    if (fullHtml.trim().length >= MIN_HTML_CHARS) break;
+    if (attempt === 0) {
+      console.warn(`[${screenId}] stream returned only ${fullHtml.trim().length} chars — retrying`);
+    }
+  }
+
+  if (!fullHtml.trim()) {
+    throw new Error(`Screen generation returned no HTML (model: ${STREAMING_MODEL})`);
   }
 
   const { repaired, errors } = validateAndRepairHtml(fullHtml);
@@ -722,81 +1029,6 @@ async function streamScreen(
     console.warn(`[${screenId}] HTML repaired:`, errors.join(", "));
   }
   return repaired;
-}
-
-/**
- * Run a critique pass; if it fails, regenerate with fix instructions (once).
- * Bounded cost: one extra critic call + optionally one extra generate call.
- */
-async function critiqueAndRefine(
-  html: string,
-  screenName: string,
-  screenDescription: string,
-  sysInstr: string,
-  designSystem: DesignSystem,
-  platform: Platform,
-  screenId: string,
-  onHtmlChunk?: (screenId: string, chunk: string) => void
-): Promise<string> {
-  try {
-    const critique = await runCritique(html, screenName);
-    if (!critique || critique.passes) {
-      if (critique) {
-        console.log(`[${screenId}] critique passed (score: ${critique.score})`);
-      }
-      return html;
-    }
-
-    console.log(
-      `[${screenId}] critique failed (score: ${critique.score}): ${critique.issues.join("; ")}`
-    );
-
-    if (!critique.refineInstruction) return html;
-
-    const headTemplate = generateHtmlHead(designSystem, platform);
-    const refinePrompt = `Regenerate the "${screenName}" screen. The previous version had these issues:
-
-${critique.issues.map((i) => `- ${i}`).join("\n")}
-
-Fix instruction: ${critique.refineInstruction}
-
-Original screen purpose: ${screenDescription}
-
-Use this EXACT <head> section:
-${headTemplate}
-
-Output ONLY the complete fixed HTML starting with <!DOCTYPE html>. No markdown.`;
-
-    const refinedHtml = await streamScreen(sysInstr, refinePrompt, screenId, onHtmlChunk);
-    return injectSharedCSS(refinedHtml, designSystem, platform);
-  } catch (err) {
-    console.warn(`[${screenId}] critique/refine failed, keeping original:`, err);
-    return html;
-  }
-}
-
-async function runCritique(html: string, screenName: string): Promise<Critique | null> {
-  // Strip the <head> block so the critic only reviews body content — saves tokens
-  // and the head is template-generated anyway.
-  const bodyMatch = html.match(/<body[\s\S]*<\/body>/i);
-  const bodyHtml = bodyMatch ? bodyMatch[0] : html;
-  const truncated = bodyHtml.length > 12000 ? bodyHtml.slice(0, 12000) + "\n...(truncated)" : bodyHtml;
-
-  const prompt = `Screen name: "${screenName}"
-
-Screen HTML (body):
-${truncated}
-
-Evaluate against the rubric. Return JSON.`;
-
-  try {
-    const raw = await collectAgent(criticAgent, "wirefraime-critique", prompt);
-    const parsed = CritiqueSchema.safeParse(JSON.parse(extractJson(raw)));
-    return parsed.success ? parsed.data : null;
-  } catch (e) {
-    console.warn("Critique call failed:", e);
-    return null;
-  }
 }
 
 // ── Chat editing ──────────────────────────────────────────────
@@ -816,7 +1048,7 @@ export interface SelectedElementContext {
   textContent: string;
 }
 
-function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
+export function parseDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
   const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
   if (!match) return null;
   return { mimeType: match[1], data: match[2] };
@@ -873,13 +1105,16 @@ For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
     ? multimodalMessage(planPromptText, parsedImage.data, parsedImage.mimeType)
     : planPromptText;
 
-  const planRaw = await withRetry(() =>
-    collectAgent(chatPlannerAgent, "wirefraime-plan", planMessage)
+  const planRaw = await withRetry(
+    () => collectAgent(chatPlannerAgent, "wirefraime-plan", planMessage),
+    2,
+    "chat-plan"
   );
 
   let plan: ChatPlan;
   try {
-    const parsed = ChatPlanSchema.safeParse(JSON.parse(extractJson(planRaw)));
+    const planJson = tryParseJsonLoose(planRaw);
+    const parsed = ChatPlanSchema.safeParse(planJson);
     if (!parsed.success) throw new Error("Invalid plan");
     plan = parsed.data;
   } catch {
@@ -921,6 +1156,23 @@ For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
     const referenceCtx = referenceScreen?.html
       ? `\n\n${extractReferencePatterns(referenceScreen.html)}\n\nMatch the existing screen's Tailwind class patterns exactly.`
       : "";
+    
+    const componentLibraryCtx = designSystem.componentLibrary ? `\n\nCOMPONENT LIBRARY — Use these exact HTML patterns for elements across all screens to ensure absolute consistency:\n
+Button:
+${designSystem.componentLibrary.buttonHtml}
+
+Card:
+${designSystem.componentLibrary.cardHtml}
+
+Input:
+${designSystem.componentLibrary.inputHtml}
+` : "";
+
+    const navHtml = designSystem.shell?.navHtml?.trim();
+    const navStyle = designSystem.layout?.navStyle;
+    const sharedNavCtx = navHtml && navStyle && navStyle !== "none"
+      ? `\n\nSHARED NAVIGATION — include this element VERBATIM so the new screen's nav matches the rest of the app:\n${navHtml}\n`
+      : "";
 
     const createPrompt = `Generate a complete, self-contained HTML document for the "${newScreenName}" screen of "${appName || "App"}".
 
@@ -934,7 +1186,7 @@ ${headTemplate}
 Use Tailwind semantic tokens (bg-primary, text-foreground, rounded-card, shadow-card, h-btn, p-card). Never use ds-* classes, hardcoded colors like bg-blue-500, or emoji icons.
 
 Realistic content, real names/numbers/dates, Iconoir icons throughout.
-${referenceCtx}
+${sharedNavCtx}${componentLibraryCtx}${referenceCtx}
 
 Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
@@ -956,7 +1208,12 @@ Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
     const { repaired, errors } = validateAndRepairHtml(fullHtml);
     if (errors.length > 0) console.warn(`[${newScreenId}] HTML repaired:`, errors.join(", "));
-    const html = injectSharedCSS(repaired, designSystem, platform);
+    const html = enforceSharedShell(
+      injectSharedCSS(repaired, designSystem, platform),
+      navHtml,
+      navStyle,
+      newScreenName
+    );
 
     yield {
       type: "screen_created",
@@ -1013,7 +1270,8 @@ Design system tokens available as Tailwind classes:
 Changes to make: ${plan.changeDescription}${imageCtx}
 ${!isMultiScreen && selectedElement ? `\nTarget element: XPath="${selectedElement.xpath}", tag=<${selectedElement.tagName}>, text="${selectedElement.textContent || ""}".\nFocus patches on this element and its immediate context.` : ""}
 
-Produce minimum patch operations. Each search string must appear EXACTLY ONCE in the HTML above. Prefer class-attribute swaps over full element rewrites.`;
+Produce minimum patch operations.
+CRITICAL: Every search string MUST include a unique anchor attribute from the element — \`data-wf-id="..."\` (present on every element) or \`data-wf-name="..."\` — copied VERBATIM from the HTML above to guarantee a match. Prefer class-attribute swaps over full element rewrites.`;
 
     const patchMessage = parsedImage
       ? multimodalMessage(patchPromptText, parsedImage.data, parsedImage.mimeType)
@@ -1024,10 +1282,13 @@ Produce minimum patch operations. Each search string must appear EXACTLY ONCE in
     try {
       const patchRaw = await withRetry(
         () => collectAgent(patchAgent, "wirefraime-patch", patchMessage),
-        1
+        1,
+        "patch-ops"
       );
 
-      const parsed = PatchOpsSchema.safeParse(JSON.parse(extractJson(patchRaw)));
+      const patchJson = tryParseJsonLoose(patchRaw);
+      if (patchJson == null) throw new Error("Patch agent returned unparseable JSON");
+      const parsed = PatchOpsSchema.safeParse(patchJson);
       if (!parsed.success) throw new Error("Invalid patch schema");
 
       const ops = parsed.data.operations;

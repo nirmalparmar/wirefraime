@@ -9,13 +9,13 @@ import {
   BackgroundVariant,
   PanOnScrollMode,
   useReactFlow,
+  useViewport,
   type Node,
   type NodeProps,
   type ColorMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useWorkspace } from "@/lib/store/use-workspace";
-import { useTheme } from "@/components/ThemeProvider";
 import { LiveIframe } from "./LiveIframe";
 import { SERIF, SANS, C, VIEWPORTS } from "@/lib/constants";
 import type { SelectedElement } from "@/lib/store/use-workspace";
@@ -108,12 +108,101 @@ const SHADOW_CARD = "var(--shadow-card)";
 const SHADOW_CARD_ACTIVE = "var(--shadow-card-active)";
 const SHADOW_SKELETON = "var(--shadow-card-active)";
 
+/* ── Generating animation ──
+   A wireframe that sketches itself: nav → headline → CTA → media → cards
+   draw in with staggered strokes, hold, fade, and redraw. Replaces the old
+   static gray-block skeleton. */
+function GeneratingCard({ label, sublabel }: { label: string; sublabel?: string }) {
+  const d = (s: number): React.CSSProperties => ({ animationDelay: `${s}s` });
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: "var(--card)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 26,
+      }}
+    >
+      <svg
+        width="320"
+        height="232"
+        viewBox="0 0 320 232"
+        fill="none"
+        style={{ color: "var(--foreground)", maxWidth: "72%", height: "auto" }}
+      >
+        {/* butt caps: round caps paint a stray dot at the path start while the
+            dash is still fully offset (Chrome zero-length-dash artifact) */}
+        <g stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.45">
+          {/* Nav bar */}
+          <circle className="wf-draw" pathLength={1} cx="23" cy="19" r="7" style={d(0)} />
+          <line className="wf-draw" pathLength={1} x1="42" y1="19" x2="86" y2="19" style={d(0.1)} />
+          <line className="wf-draw" pathLength={1} x1="216" y1="19" x2="240" y2="19" style={d(0.18)} />
+          <line className="wf-draw" pathLength={1} x1="252" y1="19" x2="276" y2="19" style={d(0.24)} />
+          <rect className="wf-draw" pathLength={1} x="288" y="10" width="26" height="18" rx="9" style={d(0.32)} />
+          <line className="wf-draw" pathLength={1} x1="8" y1="36" x2="312" y2="36" strokeOpacity="0.18" style={d(0.4)} />
+
+          {/* Headline */}
+          <line className="wf-draw" pathLength={1} x1="16" y1="64" x2="206" y2="64" strokeWidth="3" style={d(0.55)} />
+          <line className="wf-draw" pathLength={1} x1="16" y1="80" x2="152" y2="80" strokeWidth="3" style={d(0.68)} />
+          <line className="wf-draw" pathLength={1} x1="16" y1="102" x2="128" y2="102" strokeOpacity="0.25" style={d(0.8)} />
+          <line className="wf-draw" pathLength={1} x1="16" y1="112" x2="104" y2="112" strokeOpacity="0.25" style={d(0.88)} />
+
+          {/* CTA */}
+          <rect className="wf-draw" pathLength={1} x="16" y="126" width="76" height="22" rx="11" style={d(1.0)} />
+
+          {/* Media block */}
+          <rect className="wf-draw" pathLength={1} x="226" y="54" width="88" height="94" rx="8" style={d(1.12)} />
+          <path className="wf-draw" pathLength={1} d="M234 130l20-24 14 14 18-22 22 32" style={d(1.3)} />
+          <circle className="wf-draw" pathLength={1} cx="248" cy="78" r="7" style={d(1.4)} />
+
+          {/* Card row */}
+          <rect className="wf-draw" pathLength={1} x="16" y="166" width="91" height="54" rx="8" style={d(1.55)} />
+          <rect className="wf-draw" pathLength={1} x="115" y="166" width="91" height="54" rx="8" style={d(1.67)} />
+          <rect className="wf-draw" pathLength={1} x="214" y="166" width="100" height="54" rx="8" style={d(1.79)} />
+          <line className="wf-draw" pathLength={1} x1="26" y1="184" x2="62" y2="184" strokeOpacity="0.3" style={d(1.95)} />
+          <line className="wf-draw" pathLength={1} x1="26" y1="198" x2="92" y2="198" strokeOpacity="0.2" style={d(2.02)} />
+          <line className="wf-draw" pathLength={1} x1="125" y1="184" x2="161" y2="184" strokeOpacity="0.3" style={d(2.09)} />
+          <line className="wf-draw" pathLength={1} x1="125" y1="198" x2="191" y2="198" strokeOpacity="0.2" style={d(2.16)} />
+          <line className="wf-draw" pathLength={1} x1="224" y1="184" x2="260" y2="184" strokeOpacity="0.3" style={d(2.23)} />
+          <line className="wf-draw" pathLength={1} x1="224" y1="198" x2="295" y2="198" strokeOpacity="0.2" style={d(2.3)} />
+        </g>
+        {/* Soft fills appearing behind drawn outlines */}
+        <g fill="currentColor" fillOpacity="0.05">
+          <rect className="wf-fill-in" x="16" y="126" width="76" height="22" rx="11" style={d(1.0)} />
+          <rect className="wf-fill-in" x="226" y="54" width="88" height="94" rx="8" style={d(1.12)} />
+        </g>
+      </svg>
+
+      {(label || sublabel) && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+          {label && (
+            <span
+              className="wf-shimmer-text"
+              style={{ fontFamily: SANS, fontSize: 13, fontWeight: 500, letterSpacing: "-0.01em" }}
+            >
+              {label}
+            </span>
+          )}
+          {sublabel && (
+            <span style={{ fontFamily: SANS, fontSize: 11, color: C.text4 }}>{sublabel}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Node data type ── */
 type ScreenNodeData = {
   screenName: string;
   html: string;
   isStreaming: boolean;
-  streamChunks: string[];
+  streamChunksRef: React.MutableRefObject<Map<string, string[]>>;
+  streamTick: number;
   isActive: boolean;
   isSkeleton: boolean;
   vpW: number;
@@ -141,12 +230,9 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
         <div style={{ height: 14, width: 120, background: C.borderSub, borderRadius: 6 }} />
         <div style={{
           width: vpW, height: vpH, background: "var(--card)", borderRadius: 20,
-          boxShadow: SHADOW_SKELETON,
-          display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 14,
+          boxShadow: SHADOW_SKELETON, position: "relative", overflow: "hidden",
         }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.wsAccent, animation: "wfPulse 1.4s ease infinite" }} />
-          <span style={{ fontFamily: SANS, fontSize: 13, color: C.text2, fontWeight: 500, letterSpacing: "-0.01em" }}>{data.genStep || "Preparing..."}</span>
-          <span style={{ fontFamily: SANS, fontSize: 11, color: C.text4 }}>This may take a moment</span>
+          <GeneratingCard label={data.genStep || "Preparing…"} sublabel="This may take a moment" />
         </div>
       </div>
     );
@@ -224,24 +310,25 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
         )}
       </div>
 
-      {/* Iframe card */}
+      {/* Iframe card.
+          Clipping (overflow:hidden + contain:paint) stays so a streaming
+          screen never paints outside its box. The translateZ(0) promotion was
+          removed: a force-promoted layer caches its raster at the scale it was
+          painted at, so iframe content stayed blurry after zooming in. Without
+          the explicit promotion Chrome re-rasterizes at the effective scale —
+          crisp screens at every zoom level. */}
       <div style={{
         borderRadius: 16, overflow: "hidden", position: "relative",
         pointerEvents: data.isStreaming ? "none" : data.isActive ? "auto" : "none",
-        outline: data.isActive && !data.isStreaming ? `2px dashed ${C.wsAccent}` : "none",
-        outlineOffset: data.isActive ? 4 : 0,
-        boxShadow: data.isActive ? SHADOW_CARD_ACTIVE : SHADOW_CARD,
+        border: data.isActive && !data.isStreaming ? `2px solid ${C.wsAccent}` : "none",
         contain: "layout style paint",
-        willChange: "transform",
-        transform: "translateZ(0)",
-        backfaceVisibility: "hidden",
       }}>
         <LiveIframe
           key={id}
           screenId={id}
           html={data.html}
           isStreaming={data.isStreaming}
-          streamChunks={data.streamChunks}
+          streamChunks={data.streamChunksRef.current.get(id) || []}
           width={vpW}
           height={displayH}
           onElementSelected={data.onElementSelected}
@@ -258,41 +345,11 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
           appearing.
         */}
         {data.isStreaming && data.contentHeight < 60 && !data.html && (
-          <div style={{
-            position: "absolute", inset: 0, borderRadius: 16,
-            background: "var(--card)",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16,
-          }}>
-            {/* Shimmer skeleton blocks */}
-            <div style={{ width: "80%", maxWidth: 400, display: "flex", flexDirection: "column", gap: 12, padding: 24 }}>
-              {/* Nav bar skeleton */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <div className="sk" style={{ width: 28, height: 28, borderRadius: 8, background: "var(--muted)" }} />
-                <div className="sk2" style={{ width: 80, height: 10, borderRadius: 5, background: "var(--muted)" }} />
-                <div style={{ flex: 1 }} />
-                <div className="sk3" style={{ width: 50, height: 10, borderRadius: 5, background: "var(--muted)" }} />
-              </div>
-              {/* Title skeleton */}
-              <div className="sk" style={{ width: "60%", height: 14, borderRadius: 7, background: "var(--muted)" }} />
-              <div className="sk2" style={{ width: "40%", height: 10, borderRadius: 5, background: "var(--muted)" }} />
-              {/* Card skeletons */}
-              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-                <div className="sk" style={{ flex: 1, height: 60, borderRadius: 10, background: "var(--muted)" }} />
-                <div className="sk2" style={{ flex: 1, height: 60, borderRadius: 10, background: "var(--muted)" }} />
-              </div>
-              <div className="sk3" style={{ width: "100%", height: 40, borderRadius: 10, background: "var(--muted)" }} />
-              <div style={{ display: "flex", gap: 10 }}>
-                <div className="sk2" style={{ flex: 2, height: 80, borderRadius: 10, background: "var(--muted)" }} />
-                <div className="sk" style={{ flex: 1, height: 80, borderRadius: 10, background: "var(--muted)" }} />
-              </div>
-            </div>
-            {/* Status text */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.wsAccent, animation: "wfPulse 1.4s ease infinite" }} />
-              <span style={{ fontFamily: SANS, fontSize: 12, color: C.text3, fontWeight: 500 }}>
-                Generating...
-              </span>
-            </div>
+          <div style={{ position: "absolute", inset: 0, borderRadius: 16, overflow: "hidden" }}>
+            <GeneratingCard
+              label={`Designing "${data.screenName}"`}
+              sublabel="Streaming the design live"
+            />
           </div>
         )}
       </div>
@@ -314,7 +371,7 @@ export interface WheelInput {
 
 /* ── Props ── */
 interface CanvasProps {
-  streamChunks: Map<string, string[]>;
+  streamChunks: React.MutableRefObject<Map<string, string[]>>;
   streamTick: number;
   onIframeRef: (el: HTMLIFrameElement | null) => void;
   /** Exposed so external buttons (e.g. CanvasActions) can refit the viewport. */
@@ -326,12 +383,51 @@ interface CanvasProps {
   focusScreenRef?: React.MutableRefObject<((screenId: string) => void) | null>;
 }
 
+/* ── Bottom-center zoom / fit control bar ──────────────────────
+   Lives in its own component so the live `useViewport` re-render is
+   isolated from CanvasInner (which mounts the heavy iframes). */
+function ZoomBar({ onFit }: { onFit: () => void }) {
+  const { zoom } = useViewport();
+  const { zoomIn, zoomOut } = useReactFlow();
+  const pct = Math.round(zoom * 100);
+
+  const btn =
+    "flex size-7 items-center justify-center rounded-lg text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground";
+
+  return (
+    <div className="pointer-events-auto absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-2xl border border-border bg-[var(--surface-glass-strong)] px-1.5 py-1 shadow-[0_2px_10px_-3px_rgba(20,20,20,0.18),0_12px_32px_-18px_rgba(20,20,20,0.30)] backdrop-blur-md">
+      <button onClick={() => zoomOut({ duration: 200 })} title="Zoom out" className={btn}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M5 12h14" />
+        </svg>
+      </button>
+      <button
+        onClick={onFit}
+        title="Fit view"
+        className="min-w-[52px] rounded-lg px-1.5 py-1 text-center text-[12px] font-medium tabular-nums text-foreground/65 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+      >
+        {pct}%
+      </button>
+      <button onClick={() => zoomIn({ duration: 200 })} title="Zoom in" className={btn}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+      <span className="mx-0.5 h-4 w-px bg-border" />
+      <button onClick={onFit} title="Fit to screen" className={btn}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 /* ── Inner canvas (inside ReactFlowProvider) ── */
 function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyWheelRef, focusScreenRef }: CanvasProps) {
   const { state, dispatch } = useWorkspace();
   const { app, isGenerating, genStep, activeScreenId } = state;
-  const { theme } = useTheme();
-  const { fitView, setViewport, getViewport } = useReactFlow();
+  const { fitView, setViewport, getViewport, updateNodeData } = useReactFlow();
   const iframeMapRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
   const [contentHeights, setContentHeights] = useState<Map<string, number>>(new Map());
 
@@ -360,8 +456,8 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
   const CANVAS_W = vp.w;
   const CANVAS_H = vp.h;
 
-  /* React Flow colorMode from app theme */
-  const colorMode: ColorMode = theme === "dark" ? "dark" : "light";
+  /* Workspace is always light — React Flow follows. */
+  const colorMode: ColorMode = "light";
 
   /* Push live CSS variable updates to all iframes when design system changes.
      After pushing, request each iframe to emit current HTML so the auto-save
@@ -411,27 +507,54 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
   /* Single source of truth for wheel-based pan/zoom. Called by:
      - iframe bridge postMessage forwarder (cursor inside iframe content)
      - workspace-level window wheel handler (cursor over floating UI)
-     React Flow handles wheel over its own pane natively. */
+     React Flow handles wheel over its own pane natively.
+
+     Deltas are ACCUMULATED and applied once per animation frame. Trackpads
+     fire wheel events far faster than 60Hz (and the iframe postMessage path
+     can deliver several per frame); applying each one individually caused a
+     React Flow viewport update per event — the source of the pan/zoom jank. */
+  const wheelPendingRef = useRef<{
+    dx: number; dy: number; zoomDy: number; clientX: number; clientY: number;
+  } | null>(null);
+  const wheelRafRef = useRef<number | null>(null);
+
   const applyWheel = useCallback((w: WheelInput) => {
-    const v = getViewport();
-    if (w.ctrlKey || w.metaKey) {
-      // Cursor-anchored zoom. Trackpad pinch fires small deltaY repeatedly;
-      // mouse-wheel-with-ctrl fires deltaY of ~100 per tick. The exp() factor
-      // gives smooth zoom in both cases.
-      const factor = Math.exp(-w.deltaY * 0.01);
-      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, v.zoom * factor));
-      const k = nextZoom / v.zoom;
-      const nx = w.clientX - (w.clientX - v.x) * k;
-      const ny = w.clientY - (w.clientY - v.y) * k;
-      setViewport({ x: nx, y: ny, zoom: nextZoom });
-    } else {
-      setViewport({
-        x: v.x - w.deltaX * PAN_ON_SCROLL_SPEED,
-        y: v.y - w.deltaY * PAN_ON_SCROLL_SPEED,
-        zoom: v.zoom,
-      });
-    }
+    const pend = wheelPendingRef.current ?? { dx: 0, dy: 0, zoomDy: 0, clientX: w.clientX, clientY: w.clientY };
+    if (w.ctrlKey || w.metaKey) pend.zoomDy += w.deltaY;
+    else { pend.dx += w.deltaX; pend.dy += w.deltaY; }
+    pend.clientX = w.clientX;
+    pend.clientY = w.clientY;
+    wheelPendingRef.current = pend;
+
+    if (wheelRafRef.current !== null) return;
+    wheelRafRef.current = requestAnimationFrame(() => {
+      wheelRafRef.current = null;
+      const p = wheelPendingRef.current;
+      wheelPendingRef.current = null;
+      if (!p) return;
+
+      const v = getViewport();
+      let { x, y, zoom } = v;
+      if (p.zoomDy !== 0) {
+        // Cursor-anchored zoom. exp() keeps trackpad pinch (many small deltas)
+        // and ctrl+wheel (~100/tick) equally smooth.
+        const factor = Math.exp(-p.zoomDy * 0.01);
+        const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
+        const k = nextZoom / zoom;
+        x = p.clientX - (p.clientX - x) * k;
+        y = p.clientY - (p.clientY - y) * k;
+        zoom = nextZoom;
+      }
+      x -= p.dx * PAN_ON_SCROLL_SPEED;
+      y -= p.dy * PAN_ON_SCROLL_SPEED;
+      setViewport({ x, y, zoom });
+    });
   }, [getViewport, setViewport]);
+
+  // Cancel any pending wheel frame on unmount
+  useEffect(() => () => {
+    if (wheelRafRef.current !== null) cancelAnimationFrame(wheelRafRef.current);
+  }, []);
 
   // Expose for workspace-level wheel handler
   useEffect(() => {
@@ -466,11 +589,16 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
 
   const handleElementSelected = useCallback(
     (screenId: string, element: SelectedElement | null) => {
-      dispatch({ type: "SET_ACTIVE_SCREEN", id: screenId });
+      // The bridge re-describes the selection after every edit; dispatching
+      // SET_ACTIVE_SCREEN unconditionally would reset the undo-coalescing key
+      // mid-drag and spam the undo stack with per-frame entries.
+      if (screenId !== activeScreenId) {
+        dispatch({ type: "SET_ACTIVE_SCREEN", id: screenId });
+      }
       dispatch({ type: "SELECT_ELEMENT", element });
       if (element) onIframeRef(iframeMapRef.current.get(screenId) ?? null);
     },
-    [dispatch, onIframeRef]
+    [dispatch, onIframeRef, activeScreenId]
   );
 
   const handleHtmlUpdated = useCallback(
@@ -492,6 +620,10 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
   }, []);
 
   const handleContentHeight = useCallback((screenId: string, height: number) => {
+    // Ignore non-positive or absurd heights. A misbehaving screen (e.g. a
+    // min-h-screen ↔ iframe-height feedback loop) could otherwise report a
+    // runaway height that balloons the node and paints over the whole canvas.
+    if (!(height > 0) || height > 40000) return;
     setContentHeights((prev) => {
       const existing = prev.get(screenId);
       if (existing && Math.abs(existing - height) < 10) return prev;
@@ -533,7 +665,8 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
           screenName: screen.name,
           html: screen.html,
           isStreaming: screen.isStreaming ?? false,
-          streamChunks: [...(streamChunks.get(screen.id) ?? [])],
+          streamChunksRef: streamChunks,
+          streamTick: 0,
           isActive: screen.id === activeScreenId,
           isSkeleton: false,
           vpW: CANVAS_W,
@@ -569,7 +702,7 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
           y: rowY[row] ?? 0,
         },
         data: {
-          screenName: "", html: "", isStreaming: false, streamChunks: [],
+          screenName: "", html: "", isStreaming: false, streamChunksRef: streamChunks, streamTick: 0,
           isActive: false, isSkeleton: true, vpW: CANVAS_W, vpH: CANVAS_H, contentHeight: CANVAS_H, genStep,
           onElementSelected: () => { }, onHtmlUpdated: () => { }, onIframeMount: () => { },
           onContentHeight: () => { },
@@ -579,7 +712,16 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
       });
     }
     return result;
-  }, [app.screens, activeScreenId, streamChunks, streamTick, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight]);
+  }, [app.screens, activeScreenId, streamChunks, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight, CANVAS_H, CANVAS_W]);
+
+  // Update specific streaming nodes when streamTick changes, without re-evaluating the whole nodes array
+  useEffect(() => {
+    app.screens.forEach((screen) => {
+      if (screen.isStreaming) {
+        updateNodeData(screen.id, { streamTick });
+      }
+    });
+  }, [streamTick, app.screens, updateNodeData]);
 
   /* Auto-fit policy:
        - Fit ONCE when the very first screen appears (so user sees content).
@@ -631,7 +773,9 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
   }, [contentHeights, app.screens, isGenerating, fitView]);
 
   return (
-    <div className="h-full w-full overflow-hidden">
+    <div
+      className="relative h-full w-full overflow-hidden"
+    >
       <ReactFlow
         nodes={nodes}
         edges={[]}
@@ -657,29 +801,27 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
         panOnScrollMode={PanOnScrollMode.Free}
         colorMode={colorMode}
         proOptions={{ hideAttribution: true }}
-        style={{ background: "var(--canvas-bg)" }}
+        style={{ background: "#ededed" }}
       >
-        <Background variant={BackgroundVariant.Dots} color={"var(--canvas-dot)"} gap={50} size={2} />
         <Controls showInteractive={false} style={{ display: 'none' }} />
       </ReactFlow>
+
+      {/* Bottom-center zoom / fit control bar */}
+      {app.screens.length > 0 && (
+        <ZoomBar onFit={() => { try { fitView({ padding: 0.15, duration: 400 }); } catch { /* unmounted */ } }} />
+      )}
 
       {/* Generating overlay — shown when generating and no screens yet */}
       {isGenerating && app.screens.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="pointer-events-auto max-w-md rounded-3xl border border-foreground/8 bg-card/85 px-14 py-12 text-center shadow-[0_20px_60px_-20px_rgba(0,0,0,0.35)] backdrop-blur-2xl">
-            <div className="mb-5 flex justify-center gap-1.5">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="size-2 rounded-full bg-[#0d99ff]"
-                  style={{ animation: `wfPulse 1.4s ease ${i * 0.2}s infinite` }}
-                />
-              ))}
+          <div className="wf-soft-shell pointer-events-auto relative max-w-md overflow-hidden rounded-[1.65rem] px-14 pb-10 pt-12 text-center">
+            <div className="relative mx-auto mb-6 h-[180px] w-[260px]">
+              <GeneratingCard label="" />
             </div>
-            <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+            <div className="wf-shimmer-text text-[13px] font-medium tracking-[-0.01em]">
               {genStep || "Starting generation"}
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground/70">
+            <p className="mt-2.5 text-[12px] leading-relaxed text-muted-foreground/70">
               Designing your app — this usually takes 30–60 seconds.
             </p>
           </div>
@@ -689,7 +831,7 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
       {/* Empty state overlay */}
       {!isGenerating && app.screens.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="pointer-events-auto max-w-sm rounded-3xl border border-foreground/8 bg-card/80 px-10 py-8 text-center shadow-[0_20px_60px_-20px_rgba(0,0,0,0.3)] backdrop-blur-2xl">
+          <div className="wf-soft-shell pointer-events-auto max-w-sm rounded-[1.65rem] px-10 py-8 text-center">
             <div className="text-sm font-medium text-foreground/85">
               {genStep?.startsWith("Error:") ? genStep : "No screens yet"}
             </div>

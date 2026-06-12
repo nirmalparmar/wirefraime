@@ -4,10 +4,12 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { projects, screens } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
-import { generateDesignSystem, generateScreenHtml } from "@/lib/agents/design-agent";
+import { generateDesignSystem, generateScreen, parseDataUrl } from "@/lib/agents/design-agent";
+import { loadBrandPackage, mergeBrandIntoDesignSystem } from "@/lib/design/design-systems";
 import { uploadScreenHtml } from "@/lib/storage";
 import { getPlanState, incrementScreenUsage } from "@/lib/payments/usage";
 import type { DesignSystem, Platform } from "@/lib/types";
+import type { ArtifactType } from "@/lib/design/types";
 
 export async function POST(req: NextRequest) {
   const { userId: clerkId } = await auth();
@@ -32,9 +34,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, description, projectId } = await req.json();
+  const { name, description, projectId, image, designSystemId, artifactType: requestedArtifactType } = await req.json();
+  const referenceImage = typeof image === "string" ? parseDataUrl(image) ?? undefined : undefined;
   const encoder = new TextEncoder();
   const internalUserId = state.userId;
+
+  // Resolve the chosen brand: explicit body override, else the project's stored
+  // brand. null = "Custom (AI-generated)".
+  let brandId: string | null = typeof designSystemId === "string" ? designSystemId : null;
+  if (!brandId && projectId) {
+    try {
+      const proj = await db.query.projects.findFirst({
+        where: and(eq(projects.id, projectId), eq(projects.userId, internalUserId)),
+        columns: { designSystemId: true },
+      });
+      brandId = proj?.designSystemId ?? null;
+    } catch { /* ignore — fall back to custom */ }
+  }
+  const brandPkg = brandId ? loadBrandPackage(brandId) : null;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -55,9 +72,18 @@ export async function POST(req: NextRequest) {
         send("step", { label: "Choosing design direction", detail: "Selecting color palette, typography, layout patterns" });
 
         const plan = await generateDesignSystem(name, description);
-        const designSystem: DesignSystem = plan.designSystem;
+        // Brand selected → adopt its colors/fonts/layout, keep the planner's
+        // app-specific structure (screens, nav, components).
+        const designSystem: DesignSystem = brandPkg
+          ? mergeBrandIntoDesignSystem(plan.designSystem, brandPkg.designSystem)
+          : plan.designSystem;
         const plannedScreens = plan.screens;
         const platform: Platform = plan.platform;
+        // Artifact shape: explicit request wins, else the planner's classification.
+        const artifactType: ArtifactType =
+          requestedArtifactType === "landing-page" || requestedArtifactType === "app-ui"
+            ? requestedArtifactType
+            : plan.artifactType;
 
         // Check if planned screens would exceed remaining quota
         const remaining = state.screensRemaining;
@@ -68,8 +94,10 @@ export async function POST(req: NextRequest) {
         }));
 
         const fontName = designSystem.fonts.primary.split(",")[0].trim();
-        const dsDetail = `${fontName} · ${designSystem.colors.primary} · ${platform} · ${designSystem.layout?.navStyle ?? "topbar"} nav`;
-        send("step", { label: "Design system ready", detail: dsDetail });
+        const brandLabel = brandPkg ? `${brandPkg.manifest.name} · ` : "";
+        const shapeLabel = artifactType === "landing-page" ? "landing page" : `${designSystem.layout?.navStyle ?? "topbar"} app`;
+        const dsDetail = `${brandLabel}${fontName} · ${designSystem.colors.primary} · ${platform} · ${shapeLabel}`;
+        send("step", { label: brandPkg ? `Design system ready — ${brandPkg.manifest.name}` : "Design system ready", detail: dsDetail });
         send("design_system", { designSystem, platform });
 
         // Persist design system to project
@@ -114,7 +142,12 @@ export async function POST(req: NextRequest) {
             detail: screen.description.slice(0, 100) + (screen.description.length > 100 ? "…" : ""),
           });
 
-          const html = await generateScreenHtml(
+          // Per-screen reasoning buffer: forward a rolling tail of the model's
+          // thinking, throttled to ~every 120 new chars to bound SSE traffic.
+          let reasoningBuf = "";
+          let lastReasoningSent = 0;
+          const html = await generateScreen(
+            artifactType,
             screen.id,
             screen.name,
             screen.description,
@@ -125,7 +158,28 @@ export async function POST(req: NextRequest) {
             (screenId, chunk) => {
               send("html_chunk", { screenId, chunk });
             },
-            referenceHtmls
+            referenceHtmls,
+            referenceImage,
+            (screenId, findings) => {
+              if (findings.length) {
+                send("lint", {
+                  screenId,
+                  findings: findings.map((f) => ({
+                    rule: f.rule,
+                    severity: f.severity,
+                    count: f.count,
+                  })),
+                });
+              }
+            },
+            brandPkg?.brandContext,
+            (sid, text) => {
+              reasoningBuf += text;
+              if (reasoningBuf.length - lastReasoningSent >= 120) {
+                lastReasoningSent = reasoningBuf.length;
+                send("reasoning", { screenId: sid, text: reasoningBuf.slice(-600) });
+              }
+            }
           );
 
           // Keep the first screen as a permanent reference + rotate the rest.

@@ -1,93 +1,96 @@
 "use client";
 
-import { useEffect } from "react";
-import { Navbar } from "@/components/landing/navbar";
-import { Hero } from "@/components/landing/hero";
-import { TrustBand } from "@/components/landing/trust-band";
-import { Features } from "@/components/landing/features";
-import { HowItWorks } from "@/components/landing/how-it-works";
-import { Pricing } from "@/components/landing/pricing";
-import { FAQ } from "@/components/landing/faq";
-import { Footer } from "@/components/landing/footer";
-
-const JSON_LD = {
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "Organization",
-      "@id": "#org",
-      name: "Wirefraime",
-      alternateName: ["Wireframe AI", "AI Wireframe Tool"],
-      url: "/",
-      logo: "/logo.svg",
-    },
-    {
-      "@type": "WebSite",
-      "@id": "#site",
-      url: "/",
-      name: "Wirefraime",
-      publisher: { "@id": "#org" },
-    },
-    {
-      "@type": "SoftwareApplication",
-      name: "Wirefraime",
-      alternateName: "AI Wireframe & UI Design Tool",
-      applicationCategory: "DesignApplication",
-      applicationSubCategory: "Wireframe Tool",
-      operatingSystem: "Web",
-      description:
-        "Wirefraime is an AI wireframe and UI design tool. Generate wireframes, UI mockups, and every screen of your app from a single prompt — your AI UI designer.",
-      featureList: [
-        "AI wireframe generation",
-        "UI mockup from text prompt",
-        "Full design system generation",
-        "Live in-canvas editing",
-        "Chat-based UI refinement",
-        "Export to HTML, Tailwind, Next.js",
-      ],
-      keywords:
-        "wireframe, wireframe tool, AI wireframe, wireframe mockup, AI UI design, UI designer, AI UI designer, UI design tool",
-      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-      aggregateRating: {
-        "@type": "AggregateRating",
-        ratingValue: "4.9",
-        ratingCount: "120",
-      },
-    },
-  ],
-};
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { JSON_LD } from "@/components/landing/home-data";
+import {
+  CapabilitiesSection,
+  FooterCtaSection,
+  GallerySection,
+  LandingFooter,
+  LandingNavbar,
+  PricingSection,
+  ProcessSection,
+  PromptHero,
+  ProofBar,
+  TestimonialsSection,
+  TickerStrip,
+} from "@/components/landing/home-sections";
 
 export default function Home() {
-  /* Scroll reveal observer */
+  const router = useRouter();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [prompt, setPrompt] = useState("");
+
+  function submitPrompt() {
+    const val = prompt.trim();
+    if (!val) return;
+    sessionStorage.setItem("wirefraime-landing-prompt", val);
+    router.push("/dashboard");
+  }
+
+  // Nav shrink-on-scroll + scroll-reveal — DOM-class side effects, scoped to this page.
   useEffect(() => {
-    const els = document.querySelectorAll<HTMLElement>(".reveal");
+    const root = rootRef.current;
+    if (!root) return;
+
+    const navEl = root.querySelector("nav");
+    let ticking = false;
+    const updateNav = () => {
+      navEl?.classList.toggle("scrolled", window.scrollY > 24);
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateNav);
+        ticking = true;
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    updateNav();
+
     const obs = new IntersectionObserver(
       (entries) =>
         entries.forEach((e) => {
-          if (e.isIntersecting) e.target.classList.add("in");
+          if (e.isIntersecting) {
+            e.target.classList.add("vis");
+            obs.unobserve(e.target);
+          }
         }),
-      { threshold: 0.07, rootMargin: "0px 0px -40px 0px" }
+      { threshold: 0.12, rootMargin: "0px 0px -32px 0px" }
     );
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
+    root.querySelectorAll(".fade-up").forEach((el) => obs.observe(el));
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      obs.disconnect();
+    };
   }, []);
 
   return (
-    <div className="min-h-screen bg-background font-sans text-foreground">
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
-      <Navbar />
-      <main>
-        <Hero />
-        <TrustBand />
-        <Features />
-        <HowItWorks />
-        <Pricing />
-        <FAQ />
-      </main>
-      <Footer />
-    </div>
+
+      <div className="wf-landing" ref={rootRef}>
+        <TickerStrip />
+        <LandingNavbar />
+        <PromptHero
+          prompt={prompt}
+          onPromptChange={setPrompt}
+          onPromptSubmit={submitPrompt}
+        />
+        <ProofBar />
+        <GallerySection />
+        <CapabilitiesSection />
+        <ProcessSection />
+        <PricingSection />
+        <TestimonialsSection />
+        <FooterCtaSection />
+        <LandingFooter />
+      </div>
+    </>
   );
 }

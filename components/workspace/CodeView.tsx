@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useWorkspace } from "@/lib/store/use-workspace";
 import { Button } from "@/components/ui/button";
+import { SoftSurface } from "@/components/ui/soft-ui";
 
 /* ── Simple HTML pretty-printer (no external deps) ── */
 
@@ -175,14 +176,14 @@ export function CodeView({ onClose }: { onClose: () => void }) {
 
   if (!activeScreen) {
     return (
-      <div className="absolute inset-y-0 right-0 z-40 flex w-1/2 items-center justify-center border-l border-foreground/8 bg-card">
+      <SoftSurface className="absolute inset-y-4 right-4 z-40 flex w-[calc(50%-1rem)] items-center justify-center rounded-xl">
         <span className="text-sm text-muted-foreground">No screen selected</span>
-      </div>
+      </SoftSurface>
     );
   }
 
   return (
-    <div className="absolute inset-y-4 right-4 z-40 flex w-[calc(50%-1rem)] flex-col overflow-hidden rounded-3xl border border-foreground/8 bg-background/85 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.35)] backdrop-blur-2xl animate-in slide-in-from-right-4 duration-200">
+    <SoftSurface className="absolute inset-y-4 right-4 z-40 flex w-[calc(50%-1rem)] flex-col overflow-hidden rounded-xl animate-in slide-in-from-right-4 duration-200">
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-foreground/8 px-5">
         <div className="flex items-center gap-3">
@@ -253,6 +254,6 @@ export function CodeView({ onClose }: { onClose: () => void }) {
           </code>
         </pre>
       </div>
-    </div>
+    </SoftSurface>
   );
 }

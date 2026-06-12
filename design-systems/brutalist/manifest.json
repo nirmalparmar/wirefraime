@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "brutalist",
+  "name": "Brutalist",
+  "category": "Bold & Expressive",
+  "description": "Hard edges, hard shadows, raw grid, loud type. Zero softness.",
+  "tags": [
+    "bold",
+    "brutalist",
+    "raw",
+    "loud"
+  ],
+  "fonts": {
+    "primary": "Space Grotesk",
+    "mono": "Space Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "neobrutalism"
+  }
+}

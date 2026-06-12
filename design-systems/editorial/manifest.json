@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "editorial",
+  "name": "Editorial",
+  "category": "Editorial",
+  "description": "Magazine-grade serif, warm paper, oversized display type.",
+  "tags": [
+    "editorial",
+    "blog",
+    "serif",
+    "magazine"
+  ],
+  "fonts": {
+    "primary": "Fraunces",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "warm-editorial"
+  }
+}

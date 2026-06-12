@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "linear",
+  "name": "Linear",
+  "category": "Developer Tools",
+  "description": "Sharp, fast, dark-capable product UI. Tight type, restrained accent.",
+  "tags": [
+    "saas",
+    "dashboard",
+    "dark",
+    "minimal"
+  ],
+  "fonts": {
+    "primary": "Inter Tight",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "linear-app"
+  }
+}

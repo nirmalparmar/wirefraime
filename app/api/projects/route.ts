@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
         description: body.description ?? "",
         platform: body.platform ?? "web",
         designSystem: body.designSystem ?? null,
+        designSystemId: typeof body.designSystemId === "string" ? body.designSystemId : null,
       })
       .returning();
 

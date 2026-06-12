@@ -5,6 +5,8 @@ export interface AgentStep {
   detail?: string;
   screenId?: string;
   timestamp: number;
+  /** Live model reasoning/thinking tail streamed during this step (if the model exposes it). */
+  reasoning?: string;
 }
 
 export interface Message {
@@ -46,6 +48,19 @@ export interface DesignSystem {
     inputHeight: string;
     navStyle: "sidebar" | "topbar" | "bottom-tabs" | "none";
     navHeight: string;
+  };
+  /** Shared chrome (sidebar / top nav / bottom tab bar) generated ONCE and
+   *  reused verbatim on every screen so navigation stays identical. Optional
+   *  for backward compatibility with apps created before shared shells. */
+  shell?: {
+    /** The complete navigation element (<aside>/<header>/<nav>) used on all screens. */
+    navHtml: string;
+  };
+  /** Component library patterns to reuse across screens. */
+  componentLibrary?: {
+    buttonHtml: string;
+    cardHtml: string;
+    inputHtml: string;
   };
 }
 

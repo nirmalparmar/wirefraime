@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "coinbase",
+  "name": "Coinbase",
+  "category": "Fintech",
+  "description": "Trustworthy fintech blue, dense data, clear hierarchy.",
+  "tags": [
+    "fintech",
+    "dashboard",
+    "data",
+    "trust"
+  ],
+  "fonts": {
+    "primary": "Plus Jakarta Sans",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "coinbase"
+  }
+}

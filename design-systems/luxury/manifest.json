@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "luxury",
+  "name": "Luxury",
+  "category": "Luxury",
+  "description": "Refined, restrained, high-contrast serif. Quiet gold, deep neutrals.",
+  "tags": [
+    "luxury",
+    "fashion",
+    "serif",
+    "refined"
+  ],
+  "fonts": {
+    "primary": "Cormorant Garamond",
+    "mono": "JetBrains Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "luxury"
+  }
+}

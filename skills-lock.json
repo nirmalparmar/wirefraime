@@ -12,6 +12,18 @@
       "sourceType": "github",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
     },
+    "hallmark": {
+      "source": "nutlope/hallmark",
+      "sourceType": "github",
+      "skillPath": "skills/hallmark/SKILL.md",
+      "computedHash": "87ec9977431b4882ef33bcf029c55c54e7e98e68a781a6c6b00585672b08fd62"
+    },
+    "openai-docs": {
+      "source": "openai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/.curated/openai-docs/SKILL.md",
+      "computedHash": "22df00be935748ce5f8cce0604fefe89a7dda2c5221d58e627529d9f53a385b8"
+    },
     "react-flow": {
       "source": "existential-birds/beagle",
       "sourceType": "github",

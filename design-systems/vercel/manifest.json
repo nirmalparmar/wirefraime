@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "wirefraime-brand/v1",
+  "id": "vercel",
+  "name": "Vercel",
+  "category": "Developer Tools",
+  "description": "Stark black-and-white, geometric, high-contrast. Engineering-grade.",
+  "tags": [
+    "saas",
+    "minimal",
+    "mono",
+    "stark"
+  ],
+  "fonts": {
+    "primary": "Geist",
+    "mono": "Geist Mono"
+  },
+  "source": {
+    "type": "imported",
+    "origin": "VoltAgent/awesome-design-md (MIT) via Open Design",
+    "slug": "vercel"
+  }
+}

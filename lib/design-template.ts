@@ -267,6 +267,109 @@ export function injectSharedCSS(html: string, ds: DesignSystem, platform: Platfo
   return html.slice(0, headClose) + baseBlock + twBlock + html.slice(headClose);
 }
 
+/* ── Shared shell enforcement ──────────────────────────────────
+ *
+ * Guarantees the navigation chrome (sidebar / top nav / bottom tabs) is
+ * byte-identical across every screen. The model is asked to include the shared
+ * nav verbatim, but LLMs drift — so after generation we deterministically
+ * replace whatever nav element the screen produced with the canonical one,
+ * toggling only the active item. No HTML-parser dependency: container tags
+ * (aside/header/nav) don't meaningfully self-nest, and the matcher below is
+ * depth-aware for the same tag anyway.
+ */
+
+type NavStyle = "sidebar" | "topbar" | "bottom-tabs" | "none";
+
+/** Find the full outerHTML span of the first `<tag>…</tag>`, depth-aware for
+ *  nested same-tag elements. Returns null if not found. */
+function findElementSpan(html: string, tag: string): { start: number; end: number } | null {
+  const open = new RegExp(`<${tag}(?:\\s[^>]*)?>`, "i");
+  const m = open.exec(html);
+  if (!m) return null;
+  const start = m.index;
+  const tagRe = new RegExp(`<(/?)${tag}(?:\\s[^>]*)?>`, "ig");
+  tagRe.lastIndex = start;
+  let depth = 0;
+  let t: RegExpExecArray | null;
+  while ((t = tagRe.exec(html))) {
+    if (t[1] === "/") {
+      depth--;
+      if (depth === 0) return { start, end: t.index + t[0].length };
+    } else {
+      depth++;
+    }
+  }
+  return null;
+}
+
+/** Toggle the `active` class on nav links by their `data-nav="<screen name>"`
+ *  marker so only the current screen's item is highlighted. Links without the
+ *  marker are left untouched (chrome stays identical regardless). */
+function toggleActiveNav(navHtml: string, screenName: string): string {
+  return navHtml.replace(
+    /<(a|button|li)\b([^>]*\bdata-nav="([^"]*)"[^>]*)>/gi,
+    (_full, tag: string, attrs: string, navName: string) => {
+      const isActive = navName.trim().toLowerCase() === screenName.trim().toLowerCase();
+      const classMatch = attrs.match(/\bclass="([^"]*)"/i);
+      let cls = (classMatch ? classMatch[1] : "")
+        .split(/\s+/)
+        .filter((c) => c && c !== "active")
+        .join(" ");
+      if (isActive) cls = `${cls} active`.trim();
+      const newAttrs = classMatch
+        ? attrs.replace(/\bclass="[^"]*"/i, `class="${cls}"`)
+        : `${attrs} class="${cls}"`;
+      return `<${tag}${newAttrs}>`;
+    }
+  );
+}
+
+/** The nav element tag to look for, in priority order, given the nav style. */
+function navTagPriority(navStyle: NavStyle): string[] {
+  if (navStyle === "sidebar") return ["aside", "nav", "header"];
+  if (navStyle === "bottom-tabs") return ["nav", "footer"];
+  return ["header", "nav"]; // topbar
+}
+
+/**
+ * Replace the screen's nav with the canonical shared nav (active item toggled).
+ * If the screen has no detectable nav, inject the canonical one at the correct
+ * position for the layout. Returns html unchanged when there's no shared nav.
+ */
+export function enforceSharedShell(
+  html: string,
+  navHtml: string | undefined,
+  navStyle: NavStyle | undefined,
+  screenName: string
+): string {
+  if (!html || !navHtml || !navStyle || navStyle === "none") return html;
+
+  const canonical = toggleActiveNav(navHtml.trim(), screenName);
+
+  // 1. Try to replace an existing nav element of the expected tag.
+  for (const tag of navTagPriority(navStyle)) {
+    const span = findElementSpan(html, tag);
+    if (span) {
+      return html.slice(0, span.start) + canonical + html.slice(span.end);
+    }
+  }
+
+  // 2. None found — inject. Bottom tabs go before </body>; everything else
+  //    becomes the first child of <body>.
+  if (navStyle === "bottom-tabs") {
+    const bodyClose = html.lastIndexOf("</body>");
+    if (bodyClose !== -1) return html.slice(0, bodyClose) + canonical + html.slice(bodyClose);
+    return html + canonical;
+  }
+
+  const bodyOpen = html.match(/<body[^>]*>/i);
+  if (bodyOpen && bodyOpen.index !== undefined) {
+    const at = bodyOpen.index + bodyOpen[0].length;
+    return html.slice(0, at) + canonical + html.slice(at);
+  }
+  return html;
+}
+
 /* ── Reference pattern extraction ─────────────────────────── */
 
 /**

@@ -30,6 +30,7 @@ export const projects = pgTable("projects", {
   description: text("description").notNull().default(""),
   platform: text("platform").notNull().default("web"),  // "web" | "mobile" | "tablet"
   designSystem: jsonb("design_system"),                   // DesignSystem JSON
+  designSystemId: text("design_system_id"),               // brand package id; null = AI-generated
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [

@@ -6,6 +6,8 @@ import type { WireframeApp, Message, DesignSystem, Screen, Platform, AgentStep }
 /* --- Selected element from iframe --- */
 
 export interface SelectedElement {
+  /** Durable element id (data-wf-id) — survives reloads and AI edits. */
+  wfId?: string;
   xpath: string;
   tagName: string;
   className?: string;
@@ -403,6 +405,7 @@ export function WorkspaceProvider({
   // Debounced API persistence for project metadata changes
   const prevAppRef = useRef(state.app);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const msgSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (state.app === prevAppRef.current) return;
@@ -436,6 +439,30 @@ export function WorkspaceProvider({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [state.app]);
+
+  // Debounced message persistence — saves full conversation to DB on any message change
+  useEffect(() => {
+    if (state.app.messages.length === 0) return;
+    const projectId = state.app.id;
+    const msgs = state.app.messages;
+    if (msgSaveTimerRef.current) clearTimeout(msgSaveTimerRef.current);
+    msgSaveTimerRef.current = setTimeout(() => {
+      fetch(`/api/projects/${projectId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          msgs.map((m, i) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            image: m.image,
+            agentSteps: m.agentSteps,
+            sortOrder: i,
+          }))
+        ),
+      }).catch(() => {});
+    }, 1000);
+  }, [state.app.id, state.app.messages]);
 
   /* Debounced screen-HTML persistence — covers PropertyPanel inline edits
      (opacity, color, classes, text). Without this, manual edits are lost on

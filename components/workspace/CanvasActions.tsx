@@ -9,6 +9,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { SoftIconButton } from "@/components/ui/soft-ui";
 
 /* ── ZIP export ────────────────────────────────────────────── */
 async function exportZip(app: {
@@ -60,15 +61,14 @@ function ActionBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`group relative grid size-9 place-items-center rounded-xl transition
-        ${active
-          ? "bg-[#0d99ff]/15 text-[#0d99ff] shadow-[inset_0_1px_2px_rgba(13,153,255,0.08)]"
-          : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-        }
-        disabled:pointer-events-none disabled:opacity-25`}
+      className={`group relative flex size-8 items-center justify-center rounded-[8px] transition-all disabled:pointer-events-none disabled:opacity-25 ${
+        active
+          ? "bg-ws-accent/15 text-ws-accent"
+          : "text-white/40 hover:bg-white/[0.07] hover:text-white/80"
+      }`}
     >
       {children}
-      <span className="pointer-events-none absolute right-full mr-3 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-background opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+      <span className="pointer-events-none absolute right-full mr-2.5 whitespace-nowrap rounded-lg border border-white/[0.08] bg-[oklch(0.16_0.004_280)] px-2.5 py-1.5 text-[10px] font-medium tracking-wide text-white/70 opacity-0 shadow-lg transition-opacity duration-100 group-hover:opacity-100">
         {title}
       </span>
     </button>
@@ -76,10 +76,10 @@ function ActionBtn({
 }
 
 function Divider() {
-  return <div className="mx-auto my-1 h-px w-5 bg-foreground/[0.06]" />;
+  return <div className="mx-auto my-1 h-px w-5 bg-white/[0.07]" />;
 }
 
-const I = 15;
+const I = 14;
 
 export function CanvasActions({
   onRegenerate,
@@ -147,47 +147,41 @@ export function CanvasActions({
   }
 
   return (
-    <div className="absolute right-4 top-16 z-30 flex flex-col gap-0.5 rounded-2xl bg-card p-1.5 shadow-[var(--ws-soft-lg)]">
+    <div className="absolute right-3 top-3 z-30 flex flex-col gap-px rounded-[14px] border border-white/[0.07] bg-[oklch(0.155_0.004_280/0.97)] p-1.5 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.64),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl">
       {/* History */}
       <ActionBtn onClick={() => dispatch({ type: "UNDO" })} disabled={undoStack.length === 0} title="Undo">
-        <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 9h10a5 5 0 0 1 0 10H11" />
           <path d="M7 5L3 9l4 4" />
         </svg>
       </ActionBtn>
 
       <ActionBtn onClick={() => dispatch({ type: "REDO" })} disabled={redoStack.length === 0} title="Redo">
-        <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 9H11a5 5 0 0 0 0 10h2" />
           <path d="M17 5l4 4-4 4" />
         </svg>
       </ActionBtn>
 
-      {/* Fit to view — always-available camera reset */}
-      <ActionBtn onClick={onFitView} disabled={screenCount === 0} title="Fit to view">
-        <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 9V5a1 1 0 0 1 1-1h4" />
-          <path d="M20 9V5a1 1 0 0 0-1-1h-4" />
-          <path d="M4 15v4a1 1 0 0 0 1 1h4" />
-          <path d="M20 15v4a1 1 0 0 1-1 1h-4" />
+      <ActionBtn onClick={onFitView} disabled={screenCount === 0} title="Fit view">
+        <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
         </svg>
       </ActionBtn>
 
       <Divider />
 
-      {/* View toggles */}
       {screenCount > 0 && (
         <ActionBtn onClick={() => onToggleCode?.()} active={showCodeView} title="Code">
-          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M16 18l6-6-6-6" />
-            <path d="M8 6l-6 6 6 6" />
+          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
           </svg>
         </ActionBtn>
       )}
 
       {app.designSystem && (
         <ActionBtn onClick={() => onToggleDesignSystem?.()} active={showDesignSystem} title="Design System">
-          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <circle cx="8" cy="9" r="1.5" fill="currentColor" stroke="none" />
             <circle cx="12" cy="7" r="1.5" fill="currentColor" stroke="none" />
@@ -197,7 +191,6 @@ export function CanvasActions({
         </ActionBtn>
       )}
 
-      {/* Share */}
       {screenCount > 0 && (
         <>
           <Divider />
@@ -205,44 +198,39 @@ export function CanvasActions({
             onClick={handleShare}
             disabled={isSharing}
             active={shareState === "copied"}
-            title={shareState === "copied" ? "Copied!" : shareState === "failed" ? "Failed" : "Share"}
+            title={shareState === "copied" ? "Copied!" : "Share"}
           >
             {shareState === "copied" ? (
-              <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12l5 5L20 7" />
               </svg>
             ) : (
-              <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 16V3" />
-                <path d="M8 7l4-4 4 4" />
-                <path d="M20 15v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4" />
+              <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 16V3M8 7l4-4 4 4M20 15v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4" />
               </svg>
             )}
           </ActionBtn>
 
-          {/* Export */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div>
                 <ActionBtn disabled={isExporting} title="Export">
-                  <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3v13" />
-                    <path d="M8 12l4 4 4-4" />
-                    <path d="M20 19H4" />
+                  <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v13M8 12l4 4 4-4M20 19H4" />
                   </svg>
                 </ActionBtn>
               </div>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="left" sideOffset={14} className="min-w-40 rounded-2xl border-none ring-0 bg-card shadow-[var(--ws-soft-lg)]">
-              <DropdownMenuItem onClick={handleExportHtml} className="gap-2 rounded-lg text-xs">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+            <DropdownMenuContent align="end" side="left" sideOffset={14} className="min-w-40 rounded-xl border border-white/[0.08] bg-[oklch(0.16_0.004_280)] shadow-[0_24px_56px_-12px_rgba(0,0,0,0.72)]">
+              <DropdownMenuItem onClick={handleExportHtml} className="gap-2 rounded-lg text-xs text-white/70 hover:text-white/90 focus:text-white/90">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-white/40">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <path d="M14 2v6h6" />
                 </svg>
                 Export HTML
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportNextjs} className="gap-2 rounded-lg text-xs">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground">
+              <DropdownMenuItem onClick={handleExportNextjs} className="gap-2 rounded-lg text-xs text-white/70 hover:text-white/90 focus:text-white/90">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-white/40">
                   <path d="M9 15l6-6" />
                   <circle cx="9.5" cy="9.5" r="0.5" fill="currentColor" />
                   <circle cx="14.5" cy="14.5" r="0.5" fill="currentColor" />
@@ -255,16 +243,13 @@ export function CanvasActions({
         </>
       )}
 
-      {/* Regenerate */}
       {screenCount > 0 && !isGenerating && (
         <>
           <Divider />
           <ActionBtn onClick={() => onRegenerate?.()} title="Regenerate">
-            <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 0 1 14.5-7.1" />
-              <path d="M21 12a9 9 0 0 1-14.5 7.1" />
-              <path d="M18 2v4h-4" />
-              <path d="M6 22v-4h4" />
+            <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 0 1 14.5-7.1M21 12a9 9 0 0 1-14.5 7.1" />
+              <path d="M18 2v4h-4M6 22v-4h4" />
             </svg>
           </ActionBtn>
         </>
@@ -272,15 +257,14 @@ export function CanvasActions({
 
       <Divider />
 
-      {/* Theme */}
       <ActionBtn onClick={toggle} title={theme === "dark" ? "Light mode" : "Dark mode"}>
         {theme === "dark" ? (
-          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="4" />
             <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
           </svg>
         ) : (
-          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width={I} height={I} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </svg>
         )}

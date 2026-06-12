@@ -87,7 +87,10 @@ export function LiveIframe({
      that count-based tracking suffered from when React batched renders. */
   const recentSelfEditsRef = useRef<string[]>([]);
   const SELF_EDIT_CACHE = 6;
-  const lastSelectedXPathRef = useRef<string | null>(null);
+  const lastSelectedRef = useRef<{ xpath: string | null; wfId: string | null }>({
+    xpath: null,
+    wfId: null,
+  });
 
   const onIframeMountRef = useRef(onIframeMount);
   const onContentHeightRef = useRef(onContentHeight);
@@ -105,7 +108,10 @@ export function LiveIframe({
       if (e.source !== iframeRef.current?.contentWindow) return;
 
       if (e.data.type === "ELEMENT_SELECTED") {
-        lastSelectedXPathRef.current = e.data.element?.xpath ?? null;
+        lastSelectedRef.current = {
+          xpath: e.data.element?.xpath ?? null,
+          wfId: e.data.element?.wfId ?? null,
+        };
         onElementSelected?.(e.data.element);
       } else if (e.data.type === "HTML_UPDATED") {
         const html = e.data.html as string;
@@ -196,10 +202,14 @@ export function LiveIframe({
         doc.body.appendChild(script);
 
         // Restore selection visually if we had one before reload
-        if (lastSelectedXPathRef.current) {
+        if (lastSelectedRef.current.xpath || lastSelectedRef.current.wfId) {
           requestAnimationFrame(() => {
             iframe?.contentWindow?.postMessage(
-              { type: "RESTORE_SELECTION", xpath: lastSelectedXPathRef.current },
+              {
+                type: "RESTORE_SELECTION",
+                xpath: lastSelectedRef.current.xpath,
+                wfId: lastSelectedRef.current.wfId,
+              },
               "*"
             );
           });
@@ -217,8 +227,11 @@ export function LiveIframe({
         height,
         overflow: "hidden",
         display: "block",
+        // Clipping kept (paint containment); no translateZ here — the parent
+        // card is the single promoted clip layer. Fewer stacked layers = no
+        // border flicker, and clipping prevents a streaming screen from
+        // painting over its neighbours.
         contain: "layout style paint",
-        transform: "translateZ(0)",
       }}
     >
       <iframe
@@ -229,7 +242,6 @@ export function LiveIframe({
           height,
           border: "none",
           display: "block",
-          backfaceVisibility: "hidden",
         }}
         title={`Screen ${screenId}`}
       />

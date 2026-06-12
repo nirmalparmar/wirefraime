@@ -26,6 +26,54 @@ export const EDITOR_BRIDGE_SCRIPT = `
 
   var SELECTED = 'data-wf-selected';
   var HOVERED  = 'data-wf-hovered';
+  var WFID     = 'data-wf-id';
+
+  /* Stable element identity. Server-side repair injects data-wf-id on every
+     element; anything created later (user edits, legacy HTML) gets one here.
+     wf-ids survive serialization on purpose — they are the durable address
+     that keeps the property panel working across reloads and AI edits, where
+     XPath alone goes stale. */
+  var idSeed = Math.random().toString(36).slice(2, 6);
+  var idCounter = 1;
+  function ensureWfId(el) {
+    var id = el.getAttribute(WFID);
+    if (!id) {
+      id = 'el-' + idSeed + 'b-' + (idCounter++);
+      el.setAttribute(WFID, id);
+    }
+    return id;
+  }
+  function ensureAllIds() {
+    if (!document.body) return;
+    var all = document.body.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml') continue;
+      var t = el.tagName.toLowerCase();
+      if (t === 'script' || t === 'style' || t === 'br' || t === 'hr') continue;
+      ensureWfId(el);
+    }
+  }
+  ensureAllIds();
+
+  /* Resolve an edit target: durable wf-id first, XPath as fallback. */
+  function findTarget(d) {
+    if (d.wfId) {
+      try {
+        var byId = document.querySelector('[' + WFID + '="' + d.wfId + '"]');
+        if (byId) return byId;
+      } catch(e) { /* malformed id */ }
+    }
+    return d.xpath ? findByXPath(d.xpath) : null;
+  }
+
+  function notifyTargetMissing(d) {
+    window.parent.postMessage({
+      type: 'EDIT_TARGET_MISSING',
+      wfId: d.wfId || null,
+      xpath: d.xpath || null
+    }, '*');
+  }
 
   // Scoped style: outlines via attribute selector. Tagged so we can strip on save.
   var bridgeStyle = document.createElement('style');
@@ -33,6 +81,7 @@ export const EDITOR_BRIDGE_SCRIPT = `
   bridgeStyle.textContent =
     'html,body{overflow:hidden!important;height:auto!important;min-height:0!important;}' +
     '[data-wf-hovered]:not([data-wf-selected]){outline:2px solid rgba(13,153,255,.45)!important;outline-offset:-2px!important;cursor:pointer!important;}' +
+    '[data-wf-name][data-wf-hovered]:not([data-wf-selected]){outline:2px dashed rgba(13,153,255,.6)!important;outline-offset:-2px!important;}' +
     '[data-wf-selected]{outline:2px solid rgba(13,153,255,.95)!important;outline-offset:-2px!important;}';
   (document.head || document.documentElement).appendChild(bridgeStyle);
 
@@ -64,15 +113,41 @@ export const EDITOR_BRIDGE_SCRIPT = `
     } catch(e) { return null; }
   }
 
+  /* Direct text of an element: its own text nodes only, children excluded.
+     This is what the panel's content editor reads AND what setDirectText
+     writes back — so editing the label of a button never clobbers its icon. */
+  function getDirectText(el) {
+    var out = '';
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3) out += n.nodeValue;
+    }
+    return out.replace(/\\s+/g, ' ').trim();
+  }
+
+  function setDirectText(el, value) {
+    var textNodes = [];
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var n = el.childNodes[i];
+      if (n.nodeType === 3 && n.nodeValue.replace(/\\s+/g, '')) textNodes.push(n);
+    }
+    if (textNodes.length === 0) {
+      if (el.children.length === 0) { el.textContent = value; return; }
+      el.appendChild(document.createTextNode(value));
+      return;
+    }
+    textNodes[0].nodeValue = value;
+    for (var j = 1; j < textNodes.length; j++) textNodes[j].nodeValue = '';
+  }
+
   function describe(el) {
     var cs = window.getComputedStyle(el);
     return {
+      wfId: ensureWfId(el),
       xpath: getXPath(el),
       tagName: el.tagName.toLowerCase(),
       className: el.className || '',
-      textContent: el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
-        ? (el.textContent || '')
-        : '',
+      textContent: getDirectText(el),
       styles: {
         color: cs.color, backgroundColor: cs.backgroundColor,
         fontSize: cs.fontSize, fontWeight: cs.fontWeight, fontFamily: cs.fontFamily,
@@ -293,6 +368,21 @@ export const EDITOR_BRIDGE_SCRIPT = `
     }, '*');
   }
 
+  /* After an edit settles, re-describe the selected element so the panel
+     shows REAL computed values (not its optimistic guesses). Debounced to the
+     trailing edge so slider drags don't flood the parent. */
+  var refreshTimer = null;
+  function scheduleSelectionRefresh(el) {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(function() {
+      refreshTimer = null;
+      var target = selected || el;
+      if (target && target.isConnected) {
+        window.parent.postMessage({ type: 'ELEMENT_SELECTED', element: describe(target) }, '*');
+      }
+    }, 180);
+  }
+
   function emitHtmlUpdated(editKey) {
     var now = Date.now();
     var since = now - lastEmitAt;
@@ -358,10 +448,13 @@ export const EDITOR_BRIDGE_SCRIPT = `
       return;
     }
 
-    // Re-apply visual selection from xpath (used after iframe srcdoc reload)
+    // Re-apply visual selection after iframe srcdoc reload — wf-id is the
+    // durable key, xpath the fallback.
     if (e.data.type === 'RESTORE_SELECTION') {
       selectedXPath = e.data.xpath || null;
-      reSelectFromXPath();
+      var restored = findTarget(e.data);
+      if (restored) applySelection(restored);
+      else reSelectFromXPath();
       return;
     }
 
@@ -383,14 +476,31 @@ export const EDITOR_BRIDGE_SCRIPT = `
       return;
     }
 
+    // Delete the addressed element entirely (undo restores it parent-side).
+    if (e.data.type === 'DELETE_ELEMENT') {
+      var del = findTarget(e.data);
+      if (!del || isRoot(del)) { notifyTargetMissing(e.data); return; }
+      if (del === selected || (selected && del.contains(selected))) {
+        selected = null;
+        selectedXPath = null;
+      }
+      if (hovered && (del === hovered || del.contains(hovered))) hovered = null;
+      del.parentNode && del.parentNode.removeChild(del);
+      window.parent.postMessage({ type: 'ELEMENT_SELECTED', element: null }, '*');
+      emitHtmlUpdated('delete');
+      return;
+    }
+
     // Class operations
     if (e.data.type === 'SET_CLASSES') {
-      var ne = findByXPath(e.data.xpath); if (!ne) return;
+      var ne = findTarget(e.data); if (!ne) { notifyTargetMissing(e.data); return; }
       ne.className = e.data.className;
-      emitHtmlUpdated(e.data.xpath + ':class'); return;
+      emitHtmlUpdated((e.data.wfId || e.data.xpath) + ':class');
+      scheduleSelectionRefresh(ne);
+      return;
     }
     if (e.data.type === 'TOGGLE_CLASS') {
-      var te = findByXPath(e.data.xpath); if (!te) return;
+      var te = findTarget(e.data); if (!te) { notifyTargetMissing(e.data); return; }
       var cls = (e.data.className || '').trim(); if (!cls) return;
       var list = cls.split(/\\s+/);
       var mode = e.data.mode || 'toggle';
@@ -399,10 +509,12 @@ export const EDITOR_BRIDGE_SCRIPT = `
         else if (mode === 'remove') te.classList.remove(list[i]);
         else te.classList.toggle(list[i]);
       }
-      emitHtmlUpdated(e.data.xpath + ':class'); return;
+      emitHtmlUpdated((e.data.wfId || e.data.xpath) + ':class');
+      scheduleSelectionRefresh(te);
+      return;
     }
     if (e.data.type === 'REPLACE_CLASS_GROUP') {
-      var re = findByXPath(e.data.xpath); if (!re) return;
+      var re = findTarget(e.data); if (!re) { notifyTargetMissing(e.data); return; }
       var prefixes = e.data.prefixes || [];
       var newCls = e.data.newClass || '';
       var current = (re.className || '').split(/\\s+/).filter(function(c) {
@@ -413,30 +525,135 @@ export const EDITOR_BRIDGE_SCRIPT = `
       });
       if (newCls) current.push(newCls);
       re.className = current.join(' ');
-      emitHtmlUpdated(e.data.xpath + ':class'); return;
+      emitHtmlUpdated((e.data.wfId || e.data.xpath) + ':class');
+      scheduleSelectionRefresh(re);
+      return;
     }
 
     if (e.data.type === 'APPLY_EDIT') {
       var d = e.data;
-      var el = findByXPath(d.xpath); if (!el) return;
+      var el = findTarget(d); if (!el) { notifyTargetMissing(d); return; }
+      var editKey = (d.wfId || d.xpath) + ':' + d.property;
 
       if (d.property === 'textContent') {
-        el.textContent = d.value;
-      } else if (d.property === 'opacity' && (d.value === '' || d.value === '1' || d.value === '1.0')) {
-        el.style.removeProperty('opacity');
-      } else {
-        el.style[d.property] = d.value;
+        setDirectText(el, d.value);
+        emitHtmlUpdated(editKey);
+        scheduleSelectionRefresh(el);
+        return;
       }
-      emitHtmlUpdated(d.xpath + ':' + d.property);
+
+      if (d.property === 'opacity' && (d.value === '' || d.value === '1' || d.value === '1.0')) {
+        var cls = (el.className || '').split(/\\s+/).filter(function(c) { return c.indexOf('opacity-') !== 0; });
+        el.className = cls.join(' ');
+        el.style.removeProperty('opacity');
+        emitHtmlUpdated(editKey);
+        scheduleSelectionRefresh(el);
+        return;
+      }
+
+      // Map to Tailwind classes
+      var tw = '';
+      var p = d.property;
+      var v = d.value;
+
+      var SIZE_CLASS = /^text-(xs|sm|base|lg|xl|[2-9]xl)$/;
+      var SIZE_ARB = /^text-\\[[0-9.]+(px|em|rem)\\]$/;
+      var ALIGN_CLASS = /^text-(left|center|right|justify)$/;
+      var WEIGHT_CLASS = /^font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/;
+      var WEIGHT_ARB = /^font-\\[[0-9]+\\]$/;
+      var BORDER_WIDTH_CLASS = /^border(-[0248])?$/;
+      var BORDER_WIDTH_ARB = /^border-\\[[0-9.]+(px|rem)\\]$/;
+      var BORDER_STYLE_CLASS = /^border-(solid|dashed|dotted|double|none|hidden)$/;
+      var BORDER_SIDE_CLASS = /^border-(t|r|b|l|x|y)(-|$)/;
+
+      var toRemove = function(c) {
+        if (p === 'backgroundColor') return c.indexOf('bg-') === 0;
+        if (p === 'color') return c.indexOf('text-') === 0 && !SIZE_CLASS.test(c) && !SIZE_ARB.test(c) && !ALIGN_CLASS.test(c);
+        if (p === 'fontSize') return SIZE_CLASS.test(c) || SIZE_ARB.test(c);
+        if (p === 'fontWeight') return WEIGHT_CLASS.test(c) || WEIGHT_ARB.test(c);
+        if (p === 'textAlign') return ALIGN_CLASS.test(c);
+        if (p === 'lineHeight') return c.indexOf('leading-') === 0;
+        if (p === 'letterSpacing') return c.indexOf('tracking-') === 0;
+        if (p === 'borderRadius') return c === 'rounded' || c.indexOf('rounded-') === 0;
+        if (p === 'borderWidth') return BORDER_WIDTH_CLASS.test(c) || BORDER_WIDTH_ARB.test(c);
+        if (p === 'borderStyle') return BORDER_STYLE_CLASS.test(c);
+        if (p === 'borderColor') return c.indexOf('border-') === 0 && !BORDER_WIDTH_CLASS.test(c) && !BORDER_WIDTH_ARB.test(c) && !BORDER_STYLE_CLASS.test(c) && !BORDER_SIDE_CLASS.test(c);
+        if (p === 'width') return c === 'w' || c.indexOf('w-') === 0;
+        if (p === 'height') return c === 'h' || c.indexOf('h-') === 0;
+        if (p === 'display') return c === 'block' || c === 'flex' || c === 'inline-flex' || c === 'grid' || c === 'hidden' || c === 'inline-block';
+        if (p === 'flexDirection') return c === 'flex-row' || c === 'flex-col' || c === 'flex-row-reverse' || c === 'flex-col-reverse';
+        if (p === 'alignItems') return c.indexOf('items-') === 0;
+        if (p === 'justifyContent') return c.indexOf('justify-') === 0;
+        if (p === 'gap') return c.indexOf('gap-') === 0;
+        if (p === 'opacity') return c.indexOf('opacity-') === 0;
+        if (p.indexOf('padding') === 0 || p.indexOf('margin') === 0) {
+          var prefix = p.indexOf('padding') === 0 ? 'p' : 'm';
+          if (p.indexOf('Top') > 0) prefix += 't';
+          else if (p.indexOf('Right') > 0) prefix += 'r';
+          else if (p.indexOf('Bottom') > 0) prefix += 'b';
+          else if (p.indexOf('Left') > 0) prefix += 'l';
+          return c === prefix || c.indexOf(prefix + '-') === 0;
+        }
+        return false;
+      };
+
+      if (p === 'backgroundColor') tw = 'bg-[' + v + ']';
+      else if (p === 'color') tw = 'text-[' + v + ']';
+      else if (p === 'fontSize') tw = 'text-[' + v + ']';
+      else if (p === 'fontWeight') tw = 'font-[' + v + ']';
+      else if (p === 'textAlign') tw = 'text-' + v;
+      else if (p === 'lineHeight') tw = v === 'normal' ? 'leading-normal' : 'leading-[' + v + ']';
+      else if (p === 'letterSpacing') tw = v === 'normal' ? 'tracking-normal' : 'tracking-[' + v + ']';
+      else if (p === 'borderRadius') tw = 'rounded-[' + v + ']';
+      else if (p === 'borderWidth') tw = 'border-[' + v + ']';
+      else if (p === 'borderStyle') tw = 'border-' + v;
+      else if (p === 'borderColor') tw = 'border-[' + v + ']';
+      else if (p === 'width') tw = v === 'auto' ? 'w-auto' : 'w-[' + v + ']';
+      else if (p === 'height') tw = v === 'auto' ? 'h-auto' : 'h-[' + v + ']';
+      else if (p === 'display') tw = v;
+      else if (p === 'flexDirection') tw = 'flex-' + v;
+      else if (p === 'alignItems') tw = 'items-' + v.replace('flex-', '');
+      else if (p === 'justifyContent') tw = 'justify-' + v.replace('flex-', '');
+      else if (p === 'gap') tw = 'gap-[' + v + ']';
+      else if (p === 'opacity') tw = 'opacity-[' + v + ']';
+      else if (p.indexOf('padding') === 0 || p.indexOf('margin') === 0) {
+        var pfx = p.indexOf('padding') === 0 ? 'p' : 'm';
+        if (p.indexOf('Top') > 0) pfx += 't';
+        else if (p.indexOf('Right') > 0) pfx += 'r';
+        else if (p.indexOf('Bottom') > 0) pfx += 'b';
+        else if (p.indexOf('Left') > 0) pfx += 'l';
+        tw = pfx + '-[' + v + ']';
+      }
+
+      if (tw) {
+        var classes = (el.className || '').split(/\\s+/);
+        var next = [];
+        for (var i = 0; i < classes.length; i++) {
+          if (classes[i] && !toRemove(classes[i])) next.push(classes[i]);
+        }
+        next.push(tw);
+        el.className = next.join(' ');
+        // A width without a style renders nothing — make new borders visible.
+        if (p === 'borderWidth' && parseFloat(v) > 0 && window.getComputedStyle(el).borderStyle === 'none') {
+          el.classList.add('border-solid');
+        }
+      } else {
+        el.style[p] = v;
+      }
+
+      emitHtmlUpdated(editKey);
+      scheduleSelectionRefresh(el);
       return;
     }
 
     if (e.data.type === 'REMOVE_INLINE_STYLE') {
-      var rmEl = findByXPath(e.data.xpath); if (!rmEl) return;
+      var rmEl = findTarget(e.data); if (!rmEl) { notifyTargetMissing(e.data); return; }
       var props = e.data.properties || [];
       for (var p = 0; p < props.length; p++) rmEl.style.removeProperty(props[p]);
       if (!rmEl.getAttribute('style')) rmEl.removeAttribute('style');
-      emitHtmlUpdated(e.data.xpath + ':reset'); return;
+      emitHtmlUpdated((e.data.wfId || e.data.xpath) + ':reset');
+      scheduleSelectionRefresh(rmEl);
+      return;
     }
   });
 })();

@@ -1,0 +1,31 @@
+{
+  "colors": {
+    "primary": "#0075de",
+    "secondary": "color-mix(in oklab, var(--accent), black 14%)",
+    "background": "#ffffff",
+    "surface": "#f6f5f4",
+    "text": "rgba(0, 0, 0, 0.95)",
+    "textMuted": "#615d59",
+    "border": "rgba(0, 0, 0, 0.1)",
+    "success": "#1aae39",
+    "error": "#dc2626"
+  },
+  "fonts": {
+    "primary": "Sora, system-ui, -apple-system, sans-serif",
+    "mono": "JetBrains Mono, ui-monospace, \"JetBrains Mono\", Menlo, monospace"
+  },
+  "layout": {
+    "borderRadius": "8px",
+    "borderRadiusLg": "12px",
+    "borderRadiusSm": "4px",
+    "shadow": "0 1px 3px rgba(0,0,0,0.06)",
+    "shadowLg": "0 4px 12px rgba(0,0,0,0.10)",
+    "spacingUnit": 8,
+    "cardPadding": "24px",
+    "sectionGap": "32px",
+    "buttonHeight": "44px",
+    "inputHeight": "40px",
+    "navStyle": "topbar",
+    "navHeight": "56px"
+  }
+}

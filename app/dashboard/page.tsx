@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { WireframeApp } from "@/lib/types";
-import { uuid } from "@/lib/store";
-import { SERIF, SANS } from "@/lib/constants";
-import { useTheme } from "@/components/ThemeProvider";
-import { UserButton } from "@clerk/nextjs";
+import { SANS, SERIF } from "@/lib/constants";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,10 +26,19 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import { NavAuthActions } from "@/components/landing/nav-auth-actions";
 
 /* ── Helpers ── */
 
-const ACCENT_HUES = [38, 162, 220, 280, 340, 60, 120, 200, 310, 15];
+/* Pastel preview palettes — same set the landing gallery cards use. */
+const PALETTES = [
+  { from: "#e8f0fe", to: "#c2d8ff", accent: "#3366cc", soft: "#c2d0ff" },
+  { from: "#fde8e8", to: "#ffc9c9", accent: "#e05050", soft: "#ffd6d6" },
+  { from: "#e8fdf0", to: "#b9f0ce", accent: "#2f9e5b", soft: "#c8f0d6" },
+  { from: "#fef9e8", to: "#fde9a0", accent: "#d99a1f", soft: "#fbeec0" },
+  { from: "#f3e8fe", to: "#ddb9f5", accent: "#8a4fd3", soft: "#e9d4fa" },
+  { from: "#e8f8fe", to: "#b2e6fb", accent: "#2391c9", soft: "#cdeefb" },
+];
 
 function hashName(name: string): number {
   let h = 0;
@@ -40,9 +46,8 @@ function hashName(name: string): number {
   return Math.abs(h);
 }
 
-function accentForApp(name: string): string {
-  const hue = ACCENT_HUES[hashName(name) % ACCENT_HUES.length];
-  return `oklch(0.65 0.14 ${hue})`;
+function paletteForApp(name: string) {
+  return PALETTES[hashName(name) % PALETTES.length];
 }
 
 function relativeDate(ts: number): string {
@@ -57,56 +62,55 @@ function relativeDate(ts: number): string {
 }
 
 const DESC_LIMIT = 280;
+const MAX_REF_DIM = 1024;
 
-/* ── Mini screen thumbnail ── */
-function ScreenThumbnail({ accent, screenCount }: { accent: string; screenCount: number }) {
+/* Resize an image file to a capped data URL (PNG). */
+function resizeImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > MAX_REF_DIM || height > MAX_REF_DIM) {
+          const scale = MAX_REF_DIM / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = reader.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ── Mini screen preview (landing gallery style) ── */
+function ProjectPreview({ palette }: { palette: (typeof PALETTES)[number] }) {
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-t-xl bg-foreground/[0.02]">
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `linear-gradient(var(--foreground) 1px, transparent 1px), linear-gradient(90deg, var(--foreground) 1px, transparent 1px)`,
-          backgroundSize: "20px 20px",
-        }}
-      />
-      <div className="absolute inset-3 flex flex-col gap-2">
-        <div className="flex items-center gap-1.5">
-          <div className="h-1.5 w-8 rounded-full bg-foreground/10" />
-          <div className="ml-auto flex gap-1">
-            <div className="h-1.5 w-4 rounded-full bg-foreground/8" />
-            <div className="h-1.5 w-4 rounded-full bg-foreground/8" />
-          </div>
-        </div>
-        <div className="mt-1 space-y-1">
-          <div className="h-2 w-16 rounded-sm" style={{ background: accent, opacity: 0.35 }} />
-          <div className="h-1 w-24 rounded-full bg-foreground/8" />
-          <div className="h-1 w-16 rounded-full bg-foreground/6" />
-        </div>
-        <div className="mt-1 flex gap-1.5">
-          <div className="h-6 flex-1 rounded bg-foreground/[0.03]" />
-          <div className="h-6 flex-1 rounded bg-foreground/[0.03]" />
-          <div className="h-6 flex-1 rounded bg-foreground/[0.03]" />
-        </div>
-        <div className="mt-auto flex gap-1.5">
-          <div className="h-4 flex-1 rounded bg-foreground/[0.03]" />
-          <div className="h-4 flex-1 rounded bg-foreground/[0.03]" />
-        </div>
+    <div className="proj-mini">
+      <div className="proj-mini-bar">
+        <i style={{ background: `${palette.accent}55` }} />
+        <i />
+        <i />
       </div>
-      {screenCount > 0 && (
-        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1 rounded-md bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
-          <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
-            <rect x="1" y="1" width="5" height="5" rx="1" fill="currentColor" opacity="0.6" />
-            <rect x="8" y="1" width="5" height="5" rx="1" fill="currentColor" opacity="0.35" />
-            <rect x="1" y="8" width="5" height="5" rx="1" fill="currentColor" opacity="0.35" />
-            <rect x="8" y="8" width="5" height="5" rx="1" fill="currentColor" opacity="0.2" />
-          </svg>
-          {screenCount}
+      <div className="proj-mini-body">
+        <div className="proj-mini-row sm" style={{ background: palette.soft }} />
+        <div className="proj-mini-row xs" />
+        <div className="proj-mini-cards">
+          <div className="proj-mini-card" />
+          <div className="proj-mini-card" />
+          <div className="proj-mini-card" style={{ background: `${palette.accent}14`, borderColor: `${palette.accent}26` }} />
         </div>
-      )}
-      <div
-        className="absolute inset-x-0 bottom-0 h-12"
-        style={{ background: `linear-gradient(to top, ${accent}10, transparent)` }}
-      />
+        <div className="proj-mini-row" />
+        <div className="proj-mini-row sm" />
+      </div>
     </div>
   );
 }
@@ -125,34 +129,26 @@ function MoreIcon() {
 /* ── Empty state illustration ── */
 function EmptyIllustration() {
   return (
-    <div className="relative mx-auto mb-8 h-[150px] w-[200px]">
-      <div className="absolute inset-0 rounded-3xl bg-primary/5 blur-2xl" />
-      <div
-        className="liquid-glass-adaptive absolute inset-2 overflow-hidden rounded-2xl"
-        style={{ animation: "fadeUp 0.5s ease both", animationDelay: "0.1s" }}
-      >
-        <div className="flex items-center gap-1.5 border-b border-foreground/[0.06] px-3 py-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-destructive/30" />
-          <div className="h-1.5 w-1.5 rounded-full bg-chart-2/30" />
-          <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/15" />
-          <div className="ml-3 h-1 w-14 rounded-full bg-muted-foreground/8" />
+    <div className="empty-art">
+      <div className="empty-art-bg" />
+      <div className="empty-window">
+        <div className="proj-mini-bar">
+          <i style={{ background: "#3366cc55" }} />
+          <i />
+          <i />
         </div>
-        <div className="space-y-2 p-3">
-          <div className="space-y-1">
-            <div className="sk h-2 w-14 rounded-sm bg-primary/20" />
-            <div className="sk2 h-1 w-24 rounded-full bg-muted-foreground/8" />
+        <div className="proj-mini-body">
+          <div className="proj-mini-row sm" style={{ background: "#c2d0ff" }} />
+          <div className="proj-mini-row xs" />
+          <div className="proj-mini-cards">
+            <div className="proj-mini-card" />
+            <div className="proj-mini-card" />
           </div>
-          <div className="mt-2 flex gap-1.5">
-            <div className="sk2 h-8 flex-1 rounded-md bg-foreground/[0.04]" />
-            <div className="sk3 h-8 flex-1 rounded-md bg-foreground/[0.04]" />
-          </div>
+          <div className="proj-mini-row" />
         </div>
       </div>
-      <div
-        className="absolute -right-1 bottom-1 grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary"
-        style={{ animation: "fadeUp 0.5s ease both", animationDelay: "0.35s" }}
-      >
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <div className="empty-plus">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
           <path d="M8 3v10M3 8h10" />
         </svg>
       </div>
@@ -164,7 +160,6 @@ function EmptyIllustration() {
 
 export default function Dashboard() {
   const router = useRouter();
-  const { theme, toggle } = useTheme();
   const [apps, setApps] = useState<WireframeApp[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -173,6 +168,10 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [refImage, setRefImage] = useState<string | null>(null);
+  const [brands, setBrands] = useState<Array<{ id: string; name: string; category: string; description: string }>>([]);
+  const [brandId, setBrandId] = useState<string | null>(null);
+  const refFileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -211,6 +210,24 @@ export default function Dashboard() {
     load();
   }, []);
 
+  // Load the brand design-system catalog for the picker.
+  useEffect(() => {
+    fetch("/api/design-systems")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => Array.isArray(data) && setBrands(data))
+      .catch(() => { /* picker just shows Custom (AI) */ });
+  }, []);
+
+  // Pick up a prompt handed off from the landing-page hero box.
+  useEffect(() => {
+    const pending = sessionStorage.getItem("wirefraime-landing-prompt");
+    if (pending && pending.trim()) {
+      setDescription(pending.trim());
+      setShowCreate(true);
+      sessionStorage.removeItem("wirefraime-landing-prompt");
+    }
+  }, []);
+
   async function handleCreate() {
     if (!name.trim() || !description.trim()) return;
     setIsCreating(true);
@@ -219,10 +236,13 @@ export default function Dashboard() {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+        body: JSON.stringify({ name: name.trim(), description: description.trim(), designSystemId: brandId }),
       });
       if (res.ok) {
         const row = await res.json();
+        if (refImage) {
+          try { sessionStorage.setItem(`wf-ref-image-${row.id}`, refImage); } catch { /* ignore */ }
+        }
         router.push(`/workspace/${row.id}`);
       } else if (res.status === 403) {
         const data = await res.json();
@@ -279,240 +299,141 @@ export default function Dashboard() {
   function openCreate() {
     setName("");
     setDescription("");
+    setRefImage(null);
+    setBrandId(null);
     setShowCreate(true);
+  }
+
+  async function handleRefImageFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+    try { setRefImage(await resizeImageFile(file)); } catch { /* ignore */ }
   }
 
   const sortedApps = [...apps].sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (
-    <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: SANS }}>
-      {/* ── Floating pill navbar (same as landing) ── */}
-      <nav className="fixed inset-x-0 top-0 z-50 px-4 pt-4 md:px-8 md:pt-5">
-        <div className="liquid-glass-adaptive mx-auto flex max-w-5xl items-center justify-between rounded-full px-5 py-2.5 md:px-6 md:py-3">
-          {/* Logo */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-serif text-lg text-foreground no-underline"
-          >
-            <img src="/logo.png" alt="Logo" width={24} height={24} />
-            <span>
-              Wirefr<span className="text-primary">ai</span>me
-            </span>
-          </Link>
+    <div className="wf-dash">
+      <div className="dash-bg" aria-hidden="true" />
 
-          {/* Center links */}
-          <div className="hidden items-center gap-8 md:flex">
-            <Link
-              href="/dashboard"
-              className="text-sm font-medium text-foreground"
-            >
-              Projects
-            </Link>
-            <Link
-              href="/dashboard/billing"
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Billing
-            </Link>
-          </div>
-
-          {/* Right side */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={toggle}
-              className="grid size-8 place-items-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {theme === "dark" ? (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-                </svg>
-              ) : (
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              )}
-            </button>
-
-            <button
-              onClick={openCreate}
-              className="liquid-glass-adaptive flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M8 3v10M3 8h10" />
-              </svg>
-              New project
-            </button>
-
-            <UserButton
-              appearance={{
-                elements: { avatarBox: "size-7" },
-              }}
-            />
-          </div>
+      {/* ── Nav ── */}
+      <nav>
+        <Link href="/" className="nav-logo">
+          <img src="/logo.svg" alt="" width={24} height={24} style={{ display: "inline-block", verticalAlign: "middle", marginRight: 8 }} />
+          WireFraime
+        </Link>
+        <div className="nav-right">
+          <Link href="/dashboard" className="nav-link active">Projects</Link>
+          <Link href="/dashboard/billing" className="nav-link">Billing</Link>
+          <button className="pill-btn" onClick={openCreate} type="button">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M8 3v10M3 8h10" />
+            </svg>
+            New project
+          </button>
+          <NavAuthActions variant="app" />
         </div>
       </nav>
 
       {/* ── Content ── */}
-      <div className="mx-auto max-w-5xl px-5 pt-28 md:px-12 md:pt-32">
-        {/* ── Hero header ── */}
-        <div
-          className="pb-8 sm:pb-10 transition-all duration-500"
-          style={{
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(10px)",
-          }}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h1
-                className="text-[32px] tracking-tight leading-none text-foreground sm:text-[38px]"
-                style={{ fontFamily: SERIF }}
-              >
-                Projects
-              </h1>
-              <p className="mt-2 text-[14px] text-muted-foreground">
-                {apps.length === 0
-                  ? "Create your first project to get started"
-                  : `${apps.length} project${apps.length !== 1 ? "s" : ""} · Last updated ${relativeDate(sortedApps[0]?.updatedAt ?? Date.now())}`}
-              </p>
-            </div>
-
-            {apps.length > 0 && (
-              <div className="hidden items-center gap-1.5 sm:flex">
-                <span className="liquid-glass-adaptive flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium text-muted-foreground">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                    <rect x="1" y="1" width="5.5" height="5.5" rx="1.5" />
-                    <rect x="7.5" y="1" width="5.5" height="5.5" rx="1.5" />
-                    <rect x="1" y="7.5" width="5.5" height="5.5" rx="1.5" />
-                    <rect x="7.5" y="7.5" width="5.5" height="5.5" rx="1.5" />
-                  </svg>
-                  Grid
-                </span>
-              </div>
-            )}
+      <main className="dash-main">
+        <header className={`dash-header${mounted ? " vis" : ""}`}>
+          <div>
+            <p className="dash-label">Your workspace</p>
+            <h1 className="dash-title">
+              Projects
+            </h1>
+            <p className="dash-sub">
+              {apps.length === 0
+                ? "Create your first project to get started"
+                : `${apps.length} project${apps.length !== 1 ? "s" : ""} · Last updated ${relativeDate(sortedApps[0]?.updatedAt ?? Date.now())}`}
+            </p>
           </div>
-        </div>
+        </header>
 
         {/* ── Empty state ── */}
-        {apps.length === 0 && (
-          <div
-            className="flex flex-col items-center justify-center py-16 text-center sm:py-24"
-            style={{
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? "translateY(0)" : "translateY(16px)",
-              transition: "all 0.6s ease 0.15s",
-            }}
-          >
+        {!loading && apps.length === 0 && (
+          <div className="dash-empty">
             <EmptyIllustration />
-
-            <p
-              className="mb-2 text-[24px] tracking-tight text-foreground sm:text-[28px]"
-              style={{ fontFamily: SERIF }}
-            >
-              Start your first project
+            <p className="empty-title">
+              Start your <em>first</em> project
             </p>
-            <p className="mb-8 max-w-[380px] text-[14px] leading-relaxed text-muted-foreground">
+            <p className="empty-sub">
               Describe your app and AI will generate the full design — screens, components, and a complete design system.
             </p>
-            <Button
-              onClick={openCreate}
-              variant="clay"
-              size="xl"
-              className="group gap-2"
-            >
-              Create project
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-200 group-hover:translate-x-0.5">
+            <button className="pill-btn lg" onClick={openCreate} type="button">
+              Create with AI
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
               </svg>
-            </Button>
+            </button>
           </div>
         )}
 
-        {/* ── App grid ── */}
+        {/* ── Project grid ── */}
         {apps.length > 0 && (
-          <div
-            className="grid gap-5 pb-16"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
-          >
+          <div className="proj-grid">
             {/* New project card */}
-            <button
-              onClick={openCreate}
-              className="group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-foreground/[0.08] bg-transparent py-12 text-muted-foreground transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.03] hover:text-primary"
-              style={{
-                opacity: mounted ? 1 : 0,
-                transform: mounted ? "translateY(0)" : "translateY(12px)",
-                transition: "opacity 0.4s ease, transform 0.4s ease, border-color 0.2s, background 0.2s, color 0.2s",
-              }}
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-foreground/[0.04] text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-                <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <button className="proj-new" onClick={openCreate} type="button">
+              <div className="proj-new-icon">
+                <svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                   <path d="M8 3v10M3 8h10" />
                 </svg>
               </div>
-              <span className="text-[13px] font-medium">New project</span>
+              <span>New project</span>
             </button>
 
             {/* Project cards */}
             {sortedApps.map((app, i) => {
               const screenCount = app.screens?.length ?? 0;
-              const accent = accentForApp(app.name);
+              const palette = paletteForApp(app.name);
               const platform = (app as WireframeApp).platform ?? "web";
 
               return (
-                <div
+                <article
+                  className="proj-card"
                   key={app.id}
-                  className="liquid-glass-adaptive group relative flex flex-col overflow-hidden rounded-xl transition-all duration-200 hover:bg-foreground/[0.03]"
-                  style={{
-                    opacity: mounted ? 1 : 0,
-                    transform: mounted ? "translateY(0)" : "translateY(12px)",
-                    transition: `opacity 0.4s ease ${(i + 1) * 0.05}s, transform 0.4s ease ${(i + 1) * 0.05}s`,
-                  }}
+                  style={{ animationDelay: `${Math.min(i + 1, 10) * 0.05}s` }}
                 >
-                  {/* Thumbnail area */}
+                  {/* Preview */}
                   <div
-                    className="relative h-[140px] cursor-pointer"
+                    className="proj-preview"
+                    style={{ background: `linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%)` }}
                     onClick={() => router.push(`/workspace/${app.id}`)}
                   >
-                    <ScreenThumbnail accent={accent} screenCount={screenCount} />
-
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 flex items-center justify-center bg-foreground/[0.02] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                      <div className="liquid-glass-adaptive flex h-9 items-center gap-1.5 rounded-full px-4 text-[12px] font-medium text-foreground">
+                    <ProjectPreview palette={palette} />
+                    {screenCount > 0 && (
+                      <span className="proj-count">
+                        {screenCount} screen{screenCount !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    <div className="proj-open">
+                      <span className="pill-btn sm">
                         Open project
                         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
                         </svg>
-                      </div>
+                      </span>
                     </div>
                   </div>
 
-                  {/* Content area */}
-                  <div className="flex flex-1 flex-col px-4 pb-3.5 pt-3.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div
-                        className="flex-1 cursor-pointer"
-                        onClick={() => router.push(`/workspace/${app.id}`)}
-                      >
-                        <h3
-                          className="line-clamp-1 text-[15px] font-medium leading-snug tracking-tight text-foreground"
-                          style={{ fontFamily: SERIF, fontSize: 17 }}
-                        >
+                  {/* Info */}
+                  <div className="proj-info">
+                    <div className="proj-info-top">
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p className="proj-title" onClick={() => router.push(`/workspace/${app.id}`)}>
                           {app.name}
-                        </h3>
-                        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
-                          {app.description}
                         </p>
+                        <p className="proj-desc">{app.description}</p>
                       </div>
 
                       {/* Context menu */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="shrink-0 rounded-md p-1 text-muted-foreground/40 opacity-0 transition-all hover:bg-foreground/[0.06] hover:text-foreground/60 group-hover:opacity-100 focus-visible:opacity-100">
+                          <button className="proj-menu-btn" aria-label="Project actions">
                             <MoreIcon />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="min-w-[160px]">
+                        <DropdownMenuContent align="end" className="wf-dash-pop min-w-[160px]">
                           <DropdownMenuItem onClick={() => router.push(`/workspace/${app.id}`)}>
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
@@ -542,29 +463,21 @@ export default function Dashboard() {
                     </div>
 
                     {/* Meta row */}
-                    <div className="mt-3 flex items-center gap-3 text-[12px] text-muted-foreground/70">
-                      <span className="liquid-glass-adaptive inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        {platform}
-                      </span>
-                      <span className="tabular-nums">{relativeDate(app.updatedAt)}</span>
+                    <div className="proj-meta">
+                      <span className="proj-tag">{platform}</span>
+                      <span className="proj-date">{relativeDate(app.updatedAt)}</span>
                     </div>
                   </div>
-
-                  {/* Accent line at bottom */}
-                  <div
-                    className="h-[2px] w-full opacity-60"
-                    style={{ background: `linear-gradient(90deg, ${accent}, transparent 70%)` }}
-                  />
-                </div>
+                </article>
               );
             })}
           </div>
         )}
-      </div>
+      </main>
 
       {/* ── Create dialog ── */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="sm:max-w-[520px]" style={{ fontFamily: SANS }}>
+        <DialogContent className="wf-dash-dialog sm:max-w-[520px]" style={{ fontFamily: SANS }}>
           <DialogHeader>
             <DialogTitle
               className="text-[22px] tracking-tight"
@@ -622,6 +535,88 @@ export default function Dashboard() {
                 rows={4}
                 className="resize-none text-[14px] leading-relaxed"
               />
+            </div>
+
+            {/* Brand design system */}
+            <div className="space-y-2">
+              <Label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Design system <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— optional</span>
+              </Label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setBrandId(null)}
+                  className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${brandId === null ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground"}`}
+                >
+                  Custom (AI)
+                </button>
+                {brands.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => setBrandId(b.id)}
+                    title={b.description}
+                    className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${brandId === b.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground"}`}
+                  >
+                    {b.name}
+                  </button>
+                ))}
+              </div>
+              <p className="min-h-[15px] text-[11px] leading-relaxed text-muted-foreground">
+                {brandId
+                  ? brands.find((b) => b.id === brandId)?.description
+                  : "AI designs a bespoke look for your app."}
+              </p>
+            </div>
+
+            {/* Reference image */}
+            <div className="space-y-2">
+              <Label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Reference image <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— optional</span>
+              </Label>
+
+              <input
+                ref={refFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleRefImageFile(f);
+                  e.target.value = "";
+                }}
+              />
+
+              {refImage ? (
+                <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 p-2.5">
+                  <img src={refImage} alt="Reference" className="size-14 shrink-0 rounded-lg border border-border object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-foreground">Reference attached</p>
+                    <p className="text-[11px] text-muted-foreground">AI will match this style &amp; layout.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRefImage(null)}
+                    className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+                    aria-label="Remove reference image"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => refFileInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:border-foreground/25 hover:bg-muted/50 hover:text-foreground"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="3" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                  Upload a screenshot or mockup
+                </button>
+              )}
             </div>
           </div>
 
