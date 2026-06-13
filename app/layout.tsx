@@ -59,10 +59,12 @@ export const metadata: Metadata = {
     description:
       "AI wireframe tool that turns a prompt into a full UI design. Generate wireframes, mockups, and every screen of your app in seconds.",
     siteName: "Wirefraime",
+    images: "/og.webp"
   },
   twitter: {
     card: "summary_large_image",
     title: "Wirefraime - AI Wireframe & UI Design Tool",
+    images: "/og.webp",
     description:
       "AI wireframe tool that turns a prompt into a full UI design. Wireframes, mockups, every screen — in seconds.",
   },
