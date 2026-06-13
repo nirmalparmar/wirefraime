@@ -65,9 +65,28 @@ export const messages = pgTable("messages", {
   index("messages_project_id_idx").on(t.projectId),
 ]);
 
+// ── Shares (public preview snapshots) ────────────────────────
+// A self-contained snapshot of a WireframeApp (incl. each screen's HTML) taken
+// at share time and stored as jsonb. Lives in Postgres — NOT on the local disk
+// — so a public /preview/{id} link renders for anyone, on any serverless
+// instance, and survives cold starts and redeploys.
+export const shares = pgTable("shares", {
+  id: text("id").primaryKey(),                 // share code (random base36)
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  data: jsonb("data").notNull(),               // WireframeApp snapshot
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index("shares_user_id_idx").on(t.userId),
+]);
+
 // ── Relations ────────────────────────────────────────────────
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
+  shares: many(shares),
+}));
+
+export const sharesRelations = relations(shares, ({ one }) => ({
+  user: one(users, { fields: [shares.userId], references: [users.id] }),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({

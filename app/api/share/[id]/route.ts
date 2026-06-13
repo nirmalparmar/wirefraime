@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import { join } from "path";
-
-const SHARE_DIR = join(process.cwd(), ".data", "shares");
+import { db } from "@/lib/db";
+import { shares } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function GET(
   _req: NextRequest,
@@ -10,9 +9,14 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const data = await readFile(join(SHARE_DIR, `${id}.json`), "utf-8");
-    return NextResponse.json(JSON.parse(data));
-  } catch {
+    const row = await db.query.shares.findFirst({
+      where: eq(shares.id, id),
+      columns: { data: true },
+    });
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(row.data);
+  } catch (error) {
+    console.error("[GET /api/share/:id]", error);
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 }

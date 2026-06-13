@@ -1,0 +1,235 @@
+<!--
+  DIRECTION A — "Soft Light" (neumorphic). Full multi-section page:
+  hero · pricing · footer-CTA with scattered soft-3D icon field.
+  Re-skin via :root tokens + copy + prop/icon content. See references/.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ChronoTask — Think, plan, and track</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --accent:#2d6bff; --accent-press:#1f54d6; --accent-soft:#e8efff;
+    --page-bg:#e3e5e8; --card-bg:#ffffff; --hero-bg:#fafbfc;
+    --ink:#16181d; --ink-muted:#a2a8b4; --ink-soft:#5b616e; --line:#ececef;
+    --note:#faf08e; --note-edge:#ecdf6b;
+    --display:"Plus Jakarta Sans",system-ui,sans-serif; --hand:"Caveat",cursive;
+    --shadow-card:0 40px 80px -30px rgba(20,24,33,.28);
+    --shadow-float:0 18px 38px -12px rgba(20,24,33,.20);
+    --shadow-icon:0 14px 26px -8px rgba(20,24,33,.22), inset 0 1px 0 rgba(255,255,255,.9);
+    --radius-card:28px; --radius-prop:18px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--display);background:var(--page-bg);color:var(--ink);padding:28px;-webkit-font-smoothing:antialiased}
+  .shell{background:var(--card-bg);border-radius:var(--radius-card);box-shadow:var(--shadow-card);overflow:hidden}
+  a{color:inherit;text-decoration:none}
+
+  /* dotted field utility */
+  .dotted{background-image:radial-gradient(rgba(20,24,33,.06) 1.1px,transparent 1.1px);background-size:18px 18px}
+
+  /* nav */
+  nav{display:flex;align-items:center;justify-content:space-between;padding:22px 40px;position:relative;z-index:5}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:22px;letter-spacing:-.02em}
+  .brand-mark{width:26px;height:26px;display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .brand-mark i{border-radius:50%;background:var(--ink)}
+  .brand-mark i:nth-child(1){background:var(--accent)}
+  .nav-links{display:flex;gap:38px}
+  .nav-links a{font-weight:500;font-size:16px;opacity:.9}.nav-links a:hover{opacity:.55}
+  .nav-actions{display:flex;align-items:center;gap:22px}
+  .nav-actions .signin{font-weight:500;font-size:16px}
+  .btn-outline{border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:11px 20px;font-family:inherit;font-weight:600;font-size:15px;cursor:pointer;transition:border-color .15s}
+  .btn-outline:hover{border-color:#cdd0d6}
+
+  /* hero */
+  .hero{position:relative;min-height:760px;margin:0 14px;border-radius:22px;background:var(--hero-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:90px 24px 110px;overflow:hidden}
+  .floating-logo{width:70px;height:70px;border-radius:20px;background:#fff;box-shadow:var(--shadow-icon);display:grid;grid-template-columns:1fr 1fr;gap:7px;place-content:center;padding:16px;margin-bottom:30px}
+  .floating-logo i{width:14px;height:14px;border-radius:50%;background:var(--ink)}
+  .floating-logo i:nth-child(1){background:var(--accent)}
+  h1{font-size:clamp(40px,7vw,92px);font-weight:700;line-height:.98;letter-spacing:-.035em;max-width:14ch}
+  h1 .muted{color:var(--ink-muted)}
+  .subtitle{margin-top:28px;font-size:clamp(16px,1.6vw,20px);color:var(--ink-soft);font-weight:500}
+  .btn-primary{background:var(--accent);color:#fff;border:none;border-radius:14px;padding:17px 34px;font-family:inherit;font-weight:600;font-size:17px;cursor:pointer;box-shadow:0 14px 26px -10px var(--accent);transition:background .15s}
+  .btn-primary:hover{background:var(--accent-press)}
+  .hero .btn-primary{margin-top:34px}
+  .prop{position:absolute;z-index:2}
+  .note{top:60px;left:48px;width:225px;padding:24px 22px 28px;background:var(--note);border-bottom:5px solid var(--note-edge);box-shadow:var(--shadow-float);font-family:var(--hand);font-size:22px;line-height:1.25;color:#2c2a16;transform:rotate(-3deg)}
+  .pin{position:absolute;top:-10px;left:50%;transform:translateX(-50%);width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ff8b8b,#d63b3b);box-shadow:0 4px 6px rgba(0,0,0,.25)}
+  .icon-soft{width:90px;height:90px;border-radius:24px;background:#fff;box-shadow:var(--shadow-icon);display:grid;place-content:center}
+  .icon-check{top:280px;left:80px}.icon-check svg{width:46px;height:46px}
+  .card-prop{background:#fff;border-radius:var(--radius-prop);box-shadow:var(--shadow-float);padding:20px}
+  .reminders{top:58px;right:48px;width:248px}
+  .reminders .tab{font-size:13px;color:var(--ink-muted);text-align:right;margin-bottom:6px}
+  .reminders h4{font-size:20px;font-weight:700;margin-bottom:16px}
+  .reminders .row{font-size:14px;color:var(--ink-soft)}.reminders .row b{display:block;color:var(--ink);font-size:15px;margin-bottom:2px}
+  .reminders .time{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--ink-muted)}
+  .reminders .chip{background:var(--accent-soft);color:var(--accent);font-weight:600;padding:5px 10px;border-radius:8px;font-size:13px}
+  .tasks{bottom:36px;left:48px;width:320px}
+  .tasks h4{font-size:19px;font-weight:700;margin-bottom:16px}
+  .task{display:flex;align-items:center;gap:12px;padding:9px 0}
+  .task .badge{width:26px;height:26px;border-radius:7px;color:#fff;font-weight:700;font-size:13px;display:grid;place-content:center;flex-shrink:0}
+  .task .body{flex:1}.task .title{font-size:14px;font-weight:600}
+  .task .meta{display:flex;align-items:center;gap:12px;margin-top:7px}
+  .task .date{font-size:12px;color:var(--ink-muted)}
+  .bar{flex:1;height:5px;border-radius:3px;background:#eef0f3;overflow:hidden}.bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+  .pct{font-size:12px;color:var(--ink-muted);font-weight:600}
+  .avatar{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#ffd29a,#ff9a9a);flex-shrink:0}
+
+  /* pricing */
+  .pricing{padding:80px 40px 70px;text-align:center}
+  .eyebrow{display:inline-block;background:#fff;border:1px solid var(--line);box-shadow:0 6px 16px -8px rgba(20,24,33,.2);border-radius:999px;padding:8px 20px;font-size:14px;font-weight:600;color:var(--ink-soft)}
+  .pricing h2{font-size:clamp(34px,4.5vw,56px);font-weight:700;letter-spacing:-.03em;margin:26px 0 56px}
+  .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;max-width:1080px;margin:0 auto;align-items:center}
+  .plan{background:#fbfbfc;border:1px solid var(--line);border-radius:24px;padding:34px 30px;text-align:left;position:relative}
+  .plan.featured{background:var(--accent);color:#fff;padding:44px 34px;box-shadow:0 30px 60px -20px var(--accent);z-index:2}
+  .plan h3{font-size:22px;font-weight:700}
+  .plan .blurb{font-size:15px;color:var(--ink-soft);margin-top:4px}
+  .plan.featured .blurb{color:rgba(255,255,255,.8)}
+  .price{font-size:52px;font-weight:700;letter-spacing:-.03em;margin:26px 0 4px}
+  .price span{font-size:24px;color:var(--ink-muted);font-weight:500}
+  .plan.featured .price span{color:rgba(255,255,255,.7)}
+  .price-note{font-size:14px;color:var(--ink-muted);margin-bottom:22px}
+  .plan.featured .price-note{color:rgba(255,255,255,.75)}
+  .plan .cta{display:block;width:100%;text-align:center;background:var(--accent);color:#fff;border-radius:12px;padding:14px;font-weight:600;font-size:15px;border:none;cursor:pointer}
+  .plan.featured .cta{background:#fff;color:var(--accent)}
+  .divider{height:1px;background:var(--line);margin:26px 0}
+  .plan.featured .divider{background:rgba(255,255,255,.25)}
+  .feat{display:flex;align-items:center;gap:11px;font-size:15px;padding:7px 0}
+  .feat svg{width:17px;height:17px;flex-shrink:0;stroke:var(--accent)}
+  .plan.featured .feat svg{stroke:#fff}
+  .learn{display:inline-block;margin-top:14px;font-size:14px;font-weight:500;text-decoration:underline;text-underline-offset:3px}
+  .bolt{position:absolute;top:-26px;right:-22px;width:78px;height:78px;border-radius:20px;background:#fff;box-shadow:var(--shadow-icon);display:grid;place-content:center;font-size:34px}
+
+  /* footer */
+  .footer{margin:0 14px 14px;border-radius:22px;background:var(--hero-bg);padding:44px 44px 0;position:relative;overflow:hidden}
+  .footer-top{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap}
+  .footer .brand{margin-bottom:22px}
+  .footer h3{font-size:clamp(28px,3.2vw,40px);font-weight:700;letter-spacing:-.02em;line-height:1.12;max-width:22ch}
+  .links{display:flex;gap:64px}
+  .links ul{list-style:none}
+  .links li{margin-bottom:14px}
+  .links a{display:flex;align-items:center;gap:9px;font-size:15px;color:var(--ink-soft)}
+  .links a:hover{color:var(--ink)}
+  .links a::before{content:"→";color:var(--ink-muted)}
+  .icon-field{position:relative;height:300px;margin-top:10px}
+  .icon-field .fi{position:absolute;width:64px;height:64px;border-radius:16px;background:#fff;box-shadow:var(--shadow-icon);display:grid;place-content:center;font-size:26px;font-weight:700}
+  .footer-bottom{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding:18px 0;font-size:13px;color:var(--ink-muted)}
+  .footer-bottom a{margin-left:24px}
+
+  @media(max-width:1100px){.prop{display:none}.plans{grid-template-columns:1fr;max-width:420px}.plan.featured{order:-1}.icon-field{display:none}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+  <div class="shell">
+    <!-- NAV -->
+    <nav>
+      <div class="brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>ChronoTask</div>
+      <div class="nav-links"><a href="#">Features</a><a href="#">Solutions</a><a href="#">Resources</a><a href="#">Pricing</a></div>
+      <div class="nav-actions"><a href="#" class="signin">Sign in</a><button class="btn-outline">Get demo</button></div>
+    </nav>
+
+    <!-- HERO -->
+    <section class="hero dotted">
+      <div class="prop note"><span class="pin"></span>Take notes to keep track of crucial details, and accomplish more tasks with ease.</div>
+      <div class="prop icon-soft icon-check"><svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="7" fill="#2d6bff"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div class="prop card-prop reminders"><div class="tab">Meetings</div><h4>Reminders</h4><div class="row"><b>Today's Meeting</b>Call with marketing team</div><div class="time">Time <span class="chip">13:00 – 13:45</span></div></div>
+      <div class="prop card-prop tasks"><h4>Today's tasks</h4>
+        <div class="task"><span class="badge" style="background:#ff5a5f">8</span><div class="body"><div class="title">New ideas for campaign</div><div class="meta"><span class="date">Sep 10</span><span class="bar"><i style="width:60%"></i></span><span class="pct">60%</span></div></div><span class="avatar"></span></div>
+        <div class="task"><span class="badge" style="background:#2ecc71">3</span><div class="body"><div class="title">Design PPT #4</div><div class="meta"><span class="date">Sep 18</span><span class="bar"><i style="width:100%;background:linear-gradient(90deg,#2d6bff 70%,#ff5a5f)"></i></span><span class="pct">112%</span></div></div><span class="avatar" style="background:linear-gradient(135deg,#9ad0ff,#5b8def)"></span></div>
+      </div>
+      <div class="floating-logo"><i></i><i></i><i></i><i></i></div>
+      <h1>Think, plan, and track<br /><span class="muted">all in one place</span></h1>
+      <p class="subtitle">Efficiently manage your tasks and boost productivity.</p>
+      <button class="btn-primary">Get free demo</button>
+    </section>
+
+    <!-- PRICING -->
+    <section class="pricing">
+      <span class="eyebrow">Pricing</span>
+      <h2>Simple pricing plans</h2>
+      <div class="plans">
+        <div class="plan">
+          <h3>Basic plan</h3><p class="blurb">Perfect for individuals.</p>
+          <div class="price">$5<span>/mo</span></div><div class="price-note">&nbsp;</div>
+          <button class="cta">Get started</button>
+          <div class="divider"></div>
+          <div class="feat-list">
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>All product features</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited lists &amp; tasks</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Priority support</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited file storage</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited projects</div>
+          </div>
+          <a href="#" class="learn">Learn more</a>
+        </div>
+        <div class="plan featured">
+          <span class="bolt">⚡</span>
+          <h3>Pro plan</h3><p class="blurb">Ideal for small teams.</p>
+          <div class="price">$9<span>/mo</span></div><div class="price-note">Best choice</div>
+          <button class="cta">Get started</button>
+          <div class="divider"></div>
+          <div class="feat-list">
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>All product features</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited lists &amp; tasks</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Priority support</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited tasks</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited file storage</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited projects</div>
+          </div>
+          <a href="#" class="learn">Learn more</a>
+        </div>
+        <div class="plan">
+          <h3>Advanced plan</h3><p class="blurb">Best for large organizations.</p>
+          <div class="price">$15<span>/mo</span></div><div class="price-note">&nbsp;</div>
+          <button class="cta">Get started</button>
+          <div class="divider"></div>
+          <div class="feat-list">
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>All product features</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited lists &amp; tasks</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Priority support</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited tasks</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited file storage</div>
+            <div class="feat"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unlimited projects</div>
+          </div>
+          <a href="#" class="learn">Learn more</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer dotted">
+      <div class="footer-top">
+        <div>
+          <div class="brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span>ChronoTask</div>
+          <h3>Stay organized and<br>boost your productivity</h3>
+        </div>
+        <div class="links">
+          <ul><li><a href="#">About Us</a></li><li><a href="#">Contact</a></li><li><a href="#">What's New</a></li><li><a href="#">Careers</a></li></ul>
+          <ul><li><a href="#">Product</a></li><li><a href="#">Solutions</a></li><li><a href="#">Integrations</a></li><li><a href="#">Price</a></li></ul>
+        </div>
+      </div>
+      <div class="icon-field">
+        <div class="fi" style="top:30px;left:14%;transform:rotate(-8deg)">20</div>
+        <div class="fi" style="top:70px;left:4%;transform:rotate(6deg)">💬</div>
+        <div class="fi" style="top:150px;left:13%;transform:rotate(-4deg)">✅</div>
+        <div class="fi" style="top:46px;left:36%">🚩</div>
+        <div class="fi" style="top:150px;left:30%;background:#1c1f26;color:#fff">🕐</div>
+        <div class="fi" style="top:180px;left:46%">⏳</div>
+        <div class="fi" style="top:40px;left:58%">▦</div>
+        <div class="fi" style="top:160px;left:64%">⏱</div>
+        <div class="fi" style="top:34px;left:78%">💡</div>
+        <div class="fi" style="top:150px;left:80%;color:var(--accent)">»</div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2024. All rights reserved.</span>
+        <span><a href="#">Privacy Policy</a><a href="#">Terms of Service</a></span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

@@ -6,6 +6,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/api/webhooks(.*)",
   "/preview(.*)",
+  "/api/share(.*)",   // shared-preview data — viewable without auth (POST still self-guards via auth())
   // Marketing / public content — no auth required
   "/blog(.*)",
   "/privacy",

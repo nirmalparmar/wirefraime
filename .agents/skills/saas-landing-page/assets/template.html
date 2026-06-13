@@ -1,0 +1,310 @@
+<!--
+  Soft Neumorphic SaaS Landing Page — starter template.
+  Re-skin by editing the :root tokens and the copy. Floating cards are
+  decorative "product UI" props; keep 4–6, balanced around the hero.
+  Replace BRAND, headline, and the floating-card content for each new product.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ChronoTask — Think, plan, and track</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* ---- Re-skin these for a new product ---- */
+    --accent:        #2d6bff;   /* primary brand / CTA */
+    --accent-press:  #1f54d6;   /* CTA hover */
+    --accent-soft:   #e8efff;   /* tinted chips */
+
+    --page-bg:       #e3e5e8;   /* canvas behind the card */
+    --card-bg:       #ffffff;   /* the big rounded surface */
+    --hero-bg:       #fafbfc;   /* dotted hero field */
+
+    --ink:           #16181d;   /* primary text / bold headline */
+    --ink-muted:     #a2a8b4;   /* the de-emphasised headline line */
+    --ink-soft:      #5b616e;   /* subtitle / body */
+    --line:          #ececef;   /* hairline borders */
+
+    --note:          #faf08e;   /* sticky note */
+    --note-edge:     #ecdf6b;
+
+    /* fonts */
+    --display: "Plus Jakarta Sans", system-ui, sans-serif;
+    --hand: "Caveat", cursive;
+
+    /* soft elevation */
+    --shadow-card:  0 40px 80px -30px rgba(20,24,33,.28);
+    --shadow-float: 0 18px 38px -12px rgba(20,24,33,.20);
+    --shadow-icon:  0 14px 26px -8px rgba(20,24,33,.22), inset 0 1px 0 rgba(255,255,255,.9);
+    --radius-card: 28px;
+    --radius-prop: 18px;
+    --radius-icon: 20px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--display);
+    background: var(--page-bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    padding: 28px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell {
+    flex: 1;
+    background: var(--card-bg);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 56px);
+  }
+
+  /* ---------- Navbar ---------- */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 40px;
+    position: relative;
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 22px; letter-spacing: -.02em; }
+  .brand-mark {
+    width: 26px; height: 26px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  }
+  .brand-mark i { border-radius: 50%; background: var(--ink); }
+  .brand-mark i:nth-child(1) { background: var(--accent); }
+
+  .nav-links { display: flex; gap: 38px; }
+  .nav-links a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: 16px; opacity: .9; transition: opacity .15s; }
+  .nav-links a:hover { opacity: .55; }
+
+  .nav-actions { display: flex; align-items: center; gap: 22px; }
+  .nav-actions .signin { color: var(--ink); text-decoration: none; font-weight: 500; font-size: 16px; }
+  .btn-outline {
+    border: 1.5px solid var(--line);
+    background: #fff;
+    border-radius: 12px;
+    padding: 11px 20px;
+    font-family: inherit; font-weight: 600; font-size: 15px;
+    cursor: pointer; transition: border-color .15s, transform .1s;
+  }
+  .btn-outline:hover { border-color: #cdd0d6; }
+  .btn-outline:active { transform: scale(.98); }
+
+  /* ---------- Hero field ---------- */
+  .hero {
+    position: relative;
+    flex: 1;
+    margin: 0 14px 14px;
+    border-radius: 22px;
+    background-color: var(--hero-bg);
+    background-image: radial-gradient(rgba(20,24,33,.06) 1.1px, transparent 1.1px);
+    background-size: 18px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 90px 24px;
+    overflow: hidden;
+  }
+
+  .floating-logo {
+    width: 70px; height: 70px;
+    border-radius: var(--radius-icon);
+    background: #fff;
+    box-shadow: var(--shadow-icon);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+    place-content: center; padding: 16px;
+    margin-bottom: 30px;
+  }
+  .floating-logo i { width: 14px; height: 14px; border-radius: 50%; background: var(--ink); }
+  .floating-logo i:nth-child(1) { background: var(--accent); }
+
+  h1 {
+    font-size: clamp(40px, 7vw, 92px);
+    font-weight: 700;
+    line-height: .98;
+    letter-spacing: -.035em;
+    max-width: 14ch;
+  }
+  h1 .muted { color: var(--ink-muted); }
+
+  .subtitle { margin-top: 28px; font-size: clamp(16px, 1.6vw, 20px); color: var(--ink-soft); font-weight: 500; }
+
+  .btn-primary {
+    margin-top: 34px;
+    background: var(--accent);
+    color: #fff; border: none;
+    border-radius: 14px;
+    padding: 17px 34px;
+    font-family: inherit; font-weight: 600; font-size: 17px;
+    cursor: pointer;
+    box-shadow: 0 14px 26px -10px var(--accent);
+    transition: background .15s, transform .1s;
+  }
+  .btn-primary:hover { background: var(--accent-press); }
+  .btn-primary:active { transform: scale(.98); }
+
+  /* ---------- Floating props ---------- */
+  .prop { position: absolute; z-index: 2; }
+
+  .note {
+    top: 70px; left: 56px;
+    width: 230px; padding: 26px 24px 30px;
+    background: var(--note);
+    border-bottom: 5px solid var(--note-edge);
+    box-shadow: var(--shadow-float);
+    font-family: var(--hand);
+    font-size: 22px; line-height: 1.25; color: #2c2a16;
+    transform: rotate(-3deg);
+  }
+  .pin {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    width: 13px; height: 13px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff8b8b, #d63b3b);
+    box-shadow: 0 4px 6px rgba(0,0,0,.25);
+  }
+
+  .icon-soft {
+    width: 92px; height: 92px;
+    border-radius: 24px; background: #fff;
+    box-shadow: var(--shadow-icon);
+    display: grid; place-content: center;
+  }
+  .icon-check { top: 290px; left: 88px; }
+  .icon-check svg { width: 46px; height: 46px; }
+
+  .icon-clock { top: 132px; right: 350px; }
+  .clock-face { width: 56px; height: 56px; border-radius: 50%; border: 3px solid #2b2b2b; position: relative; }
+  .clock-face::before, .clock-face::after { content: ""; position: absolute; left: 50%; top: 50%; background: #2b2b2b; transform-origin: bottom; border-radius: 2px; }
+  .clock-face::before { width: 2.5px; height: 18px; transform: translate(-50%, -100%) rotate(40deg); }
+  .clock-face::after  { width: 2.5px; height: 13px; transform: translate(-50%, -100%) rotate(-15deg); }
+
+  .card-prop {
+    background: #fff;
+    border-radius: var(--radius-prop);
+    box-shadow: var(--shadow-float);
+    padding: 20px;
+  }
+
+  .reminders { top: 60px; right: 50px; width: 250px; }
+  .reminders .tab { font-size: 13px; color: var(--ink-muted); text-align: right; margin-bottom: 6px; }
+  .reminders h4 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+  .reminders .row { font-size: 14px; color: var(--ink-soft); }
+  .reminders .row b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 2px; }
+  .reminders .time { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; color: var(--ink-muted); }
+  .reminders .chip { background: var(--accent-soft); color: var(--accent); font-weight: 600; padding: 5px 10px; border-radius: 8px; font-size: 13px; }
+
+  .tasks { bottom: 0; left: 50px; width: 330px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; padding-bottom: 8px; }
+  .tasks h4 { font-size: 19px; font-weight: 700; margin-bottom: 18px; }
+  .task { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+  .task .badge { width: 26px; height: 26px; border-radius: 7px; color: #fff; font-weight: 700; font-size: 13px; display: grid; place-content: center; flex-shrink: 0; }
+  .task .body { flex: 1; }
+  .task .title { font-size: 14px; font-weight: 600; }
+  .task .meta { display: flex; align-items: center; gap: 12px; margin-top: 7px; }
+  .task .date { font-size: 12px; color: var(--ink-muted); }
+  .bar { flex: 1; height: 5px; border-radius: 3px; background: #eef0f3; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  .pct { font-size: 12px; color: var(--ink-muted); font-weight: 600; }
+  .avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg,#ffd29a,#ff9a9a); flex-shrink: 0; }
+
+  .integrations { bottom: 36px; right: 50px; width: 250px; }
+  .integrations h4 { font-size: 19px; font-weight: 700; margin-bottom: 18px; }
+  .logo-stack { display: flex; }
+  .logo-stack span { width: 64px; height: 64px; border-radius: 16px; background: #fff; box-shadow: var(--shadow-icon); display: grid; place-content: center; font-size: 30px; margin-left: -10px; }
+  .logo-stack span:first-child { margin-left: 0; }
+
+  @media (max-width: 1100px) {
+    .prop { display: none; }
+    .hero { padding: 70px 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <nav>
+      <div class="brand">
+        <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
+        ChronoTask
+      </div>
+      <div class="nav-links">
+        <a href="#">Features</a>
+        <a href="#">Solutions</a>
+        <a href="#">Resources</a>
+        <a href="#">Pricing</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#" class="signin">Sign in</a>
+        <button class="btn-outline">Get demo</button>
+      </div>
+    </nav>
+
+    <div class="hero">
+      <!-- floating props -->
+      <div class="prop note">
+        <span class="pin"></span>
+        Take notes to keep track of crucial details, and accomplish more tasks with ease.
+      </div>
+
+      <div class="prop icon-soft icon-check">
+        <svg viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="7" fill="#2d6bff"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+
+      <div class="prop icon-soft icon-clock"><div class="clock-face"></div></div>
+
+      <div class="prop card-prop reminders">
+        <div class="tab">Meetings</div>
+        <h4>Reminders</h4>
+        <div class="row"><b>Today's Meeting</b>Call with marketing team</div>
+        <div class="time">Time <span class="chip">13:00 – 13:45</span></div>
+      </div>
+
+      <div class="prop card-prop tasks">
+        <h4>Today's tasks</h4>
+        <div class="task">
+          <span class="badge" style="background:#ff5a5f">8</span>
+          <div class="body">
+            <div class="title">New Ideas for campaign</div>
+            <div class="meta"><span class="date">Sep 10</span><span class="bar"><i style="width:60%"></i></span><span class="pct">60%</span></div>
+          </div>
+          <span class="avatar"></span>
+        </div>
+        <div class="task">
+          <span class="badge" style="background:#2ecc71">3</span>
+          <div class="body">
+            <div class="title">Design PPT #4</div>
+            <div class="meta"><span class="date">Sep 18</span><span class="bar"><i style="width:100%;background:linear-gradient(90deg,#2d6bff 70%,#ff5a5f)"></i></span><span class="pct">112%</span></div>
+          </div>
+          <span class="avatar" style="background:linear-gradient(135deg,#9ad0ff,#5b8def)"></span>
+        </div>
+      </div>
+
+      <div class="prop card-prop integrations">
+        <h4>100+ Integrations</h4>
+        <div class="logo-stack">
+          <span>📧</span><span>💬</span><span>📅</span>
+        </div>
+      </div>
+
+      <!-- hero content -->
+      <div class="floating-logo"><i></i><i></i><i></i><i></i></div>
+      <h1>Think, plan, and track<br /><span class="muted">all in one place</span></h1>
+      <p class="subtitle">Efficiently manage your tasks and boost productivity.</p>
+      <button class="btn-primary">Get free demo</button>
+    </div>
+  </div>
+</body>
+</html>

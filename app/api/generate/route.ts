@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { projects, screens } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateDesignSystem, generateScreen, parseDataUrl } from "@/lib/agents/design-agent";
+import { selectDesignSkill, loadSelectedSkillBody } from "@/lib/agents/skill-selector";
 import { loadBrandPackage, mergeBrandIntoDesignSystem } from "@/lib/design/design-systems";
 import { uploadScreenHtml } from "@/lib/storage";
 import { getPlanState, incrementScreenUsage } from "@/lib/payments/usage";
@@ -69,9 +70,17 @@ export async function POST(req: NextRequest) {
 
       try {
         send("step", { label: "Analyzing requirements", detail: `Understanding "${name}" — ${description.slice(0, 80)}${description.length > 80 ? "…" : ""}` });
+
+        // Step 1 — pick the design skill BEFORE building the design system, so
+        // both the planner and the screen generators read from the same skill.
+        send("step", { label: "Selecting design skill", detail: "Matching the brief to the best design playbook" });
+        const selectedSkill = await selectDesignSkill(name, description, referenceImage);
+        send("step", { label: `Skill selected — ${selectedSkill.name}`, detail: selectedSkill.reasoning });
+        const selectedSkillBody = await loadSelectedSkillBody(selectedSkill.slug);
+
         send("step", { label: "Choosing design direction", detail: "Selecting color palette, typography, layout patterns" });
 
-        const plan = await generateDesignSystem(name, description);
+        const plan = await generateDesignSystem(name, description, referenceImage, selectedSkill.slug);
         // Brand selected → adopt its colors/fonts/layout, keep the planner's
         // app-specific structure (screens, nav, components).
         const designSystem: DesignSystem = brandPkg
@@ -179,7 +188,8 @@ export async function POST(req: NextRequest) {
                 lastReasoningSent = reasoningBuf.length;
                 send("reasoning", { screenId: sid, text: reasoningBuf.slice(-600) });
               }
-            }
+            },
+            selectedSkillBody
           );
 
           // Keep the first screen as a permanent reference + rotate the rest.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import type { WireframeApp, Platform, Screen } from "@/lib/types";
@@ -67,22 +67,6 @@ const ICON = {
   close: "M18 6L6 18M6 6l12 12",
   expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
 };
-
-/* Measure an element's content box — drives fit-to-width scaling. */
-function useSize<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [size, setSize] = useState({ w: 0, h: 0 });
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      setSize({ w: entry.contentRect.width, h: entry.contentRect.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, size] as const;
-}
 
 export default function PreviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -296,7 +280,7 @@ function PlateCard({
   );
 }
 
-/* ── Lightbox — floating viewing frame with toolbar + live screen ──── */
+/* ── Lightbox — fullscreen live preview with floating controls ──── */
 function Lightbox({
   screens,
   index,
@@ -310,10 +294,10 @@ function Lightbox({
   viewport: { w: number; h: number };
   platform: Platform;
 }) {
-  const [stageRef, stage] = useSize<HTMLDivElement>();
   const [shown, setShown] = useState(false);
   const screen = screens[index];
   const count = screens.length;
+  const isPhone = platform === "mobile";
 
   const close = useCallback(() => setIndex(null), [setIndex]);
   const go = useCallback(
@@ -343,109 +327,63 @@ function Lightbox({
     return () => window.removeEventListener("keydown", onKey);
   }, [close, go, count]);
 
-  // Fit screen to the available stage width (never upscale past 1:1).
-  const fit = stage.w > 0 ? Math.min(1, stage.w / viewport.w) : 0;
-  const frameW = Math.round(viewport.w * fit);
-  const frameH = stage.h > 0 ? Math.round(stage.h) : 0;
-  const isPhone = platform === "mobile";
-
+  // Render the screen natively — no CSS transform — so text stays pixel-sharp,
+  // exactly like opening the exported HTML. Web/tablet fill the window width;
+  // phones show as a centred device-width column. The pages are responsive, so
+  // they lay out crisply at whatever width they're given.
   return (
     <div
-      onClick={close}
-      className="fixed inset-0 z-[100] flex flex-col bg-background/85 backdrop-blur-xl"
+      className={`fixed inset-0 z-[100] flex items-stretch justify-center overflow-hidden transition-opacity duration-300 motion-reduce:transition-none ${
+        shown ? "opacity-100" : "opacity-0"
+      } ${isPhone ? "bg-[color-mix(in_oklch,var(--foreground)_7%,var(--background))]" : "bg-background"}`}
       role="dialog"
       aria-modal="true"
       aria-label={`${screen.name} preview`}
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[45vh] bg-[radial-gradient(60%_100%_at_50%_0%,color-mix(in_oklch,var(--ws-accent)_16%,transparent),transparent_72%)]"
+      <iframe
+        key={screen.id}
+        srcDoc={withPreviewGuard(screen.html)}
+        sandbox="allow-scripts allow-popups"
+        title={screen.name}
+        className="h-full w-full border-0 bg-white"
+        style={{ maxWidth: isPhone ? viewport.w : undefined }}
       />
 
-      {/* Toolbar */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex items-center gap-3 border-b border-border/70 px-4 py-3 sm:px-6"
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="font-sans text-[11px] font-semibold tabular-nums tracking-[0.15em] text-muted-foreground">
-            {plate(index)}
-          </span>
-          <h2 className="truncate font-serif text-[19px] leading-none tracking-[-0.01em] text-foreground">
-            {screen.name}
-          </h2>
-        </div>
-
-        <div className="ml-auto flex items-center gap-1.5">
-          {count > 1 && (
-            <div className="mr-1 flex items-center gap-0.5 rounded-full border border-border bg-card/60 p-0.5">
-              <ToolbarBtn label="Previous screen" onClick={() => go(-1)} icon={ICON.left} />
-              <span className="px-2 text-[11.5px] font-medium tabular-nums tracking-wide text-muted-foreground">
-                {plate(index)} <span className="text-foreground/30">/</span> {plate(count - 1)}
-              </span>
-              <ToolbarBtn label="Next screen" onClick={() => go(1)} icon={ICON.right} />
-            </div>
-          )}
-          <ToolbarBtn label="Close preview" onClick={close} icon={ICON.close} />
-        </div>
-      </div>
-
-      {/* Stage */}
-      <div
+      {/* Floating back button — always visible over the screen */}
+      <button
+        type="button"
         onClick={close}
-        className="relative z-0 flex flex-1 items-stretch justify-center overflow-hidden p-4 sm:p-7"
+        aria-label="Back to gallery"
+        className="fixed left-4 top-4 z-10 inline-flex items-center gap-2 rounded-full border border-white/10 bg-neutral-900/85 py-2.5 pl-3 pr-4 text-[13px] font-medium text-white shadow-[0_10px_34px_-10px_rgba(0,0,0,0.7)] backdrop-blur-md transition hover:bg-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:left-6 sm:top-6"
       >
-        <div ref={stageRef} className="relative w-full max-w-[1320px]">
-          {frameW > 0 && (
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className={`absolute left-1/2 top-0 -translate-x-1/2 overflow-hidden border border-border bg-white shadow-[0_50px_130px_-40px_rgba(0,0,0,0.8)] transition-all duration-300 ease-out motion-reduce:transition-none ${
-                isPhone ? "rounded-[2.2rem]" : "rounded-2xl"
-              } ${shown ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`}
-              style={{ width: frameW, height: frameH }}
-            >
-              <iframe
-                key={screen.id}
-                srcDoc={withPreviewGuard(screen.html)}
-                sandbox="allow-scripts allow-popups"
-                title={screen.name}
-                className="block origin-top-left border-0"
-                style={{
-                  width: viewport.w,
-                  height: fit > 0 ? Math.round(frameH / fit) : frameH,
-                  transform: `scale(${fit})`,
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+        <Icon d={ICON.left} size={16} />
+        Back
+      </button>
 
-      {/* Caption */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative z-10 flex items-center justify-center gap-2 border-t border-border/70 py-3 text-[11.5px] text-muted-foreground"
-      >
-        <span className="capitalize">{platform}</span>
-        <span className="text-foreground/25">·</span>
-        <span className="tabular-nums">
-          {viewport.w} × {viewport.h}
-        </span>
-        <span className="text-foreground/25">·</span>
-        <span>Scroll inside the frame to explore</span>
-      </div>
+      {/* Floating screen switcher — bottom-center */}
+      {count > 1 && (
+        <div className="fixed bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/10 bg-neutral-900/85 p-1 text-white shadow-[0_10px_34px_-10px_rgba(0,0,0,0.7)] backdrop-blur-md">
+          <FloatBtn label="Previous screen" onClick={() => go(-1)} icon={ICON.left} />
+          <span className="flex max-w-[44vw] items-center truncate px-2 text-[12.5px] font-medium">
+            <span className="tabular-nums text-white/50">{plate(index)}</span>
+            <span className="mx-1.5 text-white/25">·</span>
+            <span className="truncate">{screen.name}</span>
+          </span>
+          <FloatBtn label="Next screen" onClick={() => go(1)} icon={ICON.right} />
+        </div>
+      )}
     </div>
   );
 }
 
-function ToolbarBtn({ label, onClick, icon }: { label: string; onClick: () => void; icon: string }) {
+function FloatBtn({ label, onClick, icon }: { label: string; onClick: () => void; icon: string }) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="grid size-8 place-items-center rounded-full text-muted-foreground transition hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ws-accent/60"
+      className="grid size-8 place-items-center rounded-full text-white/70 transition hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
     >
       <Icon d={icon} size={16} />
     </button>

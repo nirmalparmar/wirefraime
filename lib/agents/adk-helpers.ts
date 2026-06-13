@@ -4,6 +4,15 @@ import { LlmAgent, InMemoryRunner, BaseLlm } from "@google/adk";
 import type { Content } from "@google/genai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+// The ADK runner (@google/genai) only reads GEMINI_API_KEY / GOOGLE_GENAI_API_KEY,
+// while the rest of this codebase (and streamWithGemini) accepts GOOGLE_API_KEY.
+// Mirror it so the Gemini-backed planner/critic agents authenticate regardless
+// of which name the deployment env uses — without this, every planner call
+// throws "API key must be provided…" and collapses into the fallback plan.
+if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_GENAI_API_KEY && process.env.GOOGLE_API_KEY) {
+  process.env.GEMINI_API_KEY = process.env.GOOGLE_API_KEY;
+}
+
 export interface Skill {
   frontmatter: Record<string, string>;
   instructions: string;
@@ -221,15 +230,21 @@ export class Agent {
     return data.choices?.[0]?.message?.content ?? "";
   }
 
-  async *chatStream(prompt: string): AsyncGenerator<string> {
+  async *chatStream(
+    prompt: string,
+    image?: { data: string; mimeType: string }
+  ): AsyncGenerator<string> {
     if (this.isOpenRouter) {
       // For structured calls, just do a single non-streaming call
       const text = await this.callOpenRouter(prompt);
       if (text) yield text;
       return;
     }
-    // ADK/Gemini path
-    const message: Content = { role: "user", parts: [{ text: prompt }] };
+    // ADK/Gemini path. Optionally attach a reference image (multimodal) so the
+    // planner can derive palette/typography from it.
+    const parts: Content["parts"] = [{ text: prompt }];
+    if (image) parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
+    const message: Content = { role: "user", parts };
     for await (const event of this.runner!.runEphemeral({
       userId: "system",
       newMessage: message,
@@ -243,9 +258,9 @@ export class Agent {
     }
   }
 
-  async chat(prompt: string) {
+  async chat(prompt: string, image?: { data: string; mimeType: string }) {
     let text = "";
-    for await (const chunk of this.chatStream(prompt)) {
+    for await (const chunk of this.chatStream(prompt, image)) {
       text += chunk;
     }
     if (!text.trim()) {

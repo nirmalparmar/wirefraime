@@ -3,7 +3,8 @@ import type { Content, Part } from "@google/genai";
 import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
-import { Agent, SkillToolset, loadSkillFromDir, streamDesign } from "./adk-helpers";
+import { Agent, loadSkillFromDir, streamDesign } from "./adk-helpers";
+import { loadSelectedSkillBody, DEFAULT_SKILL_SLUG } from "./skill-selector";
 import {
   generateHtmlHead,
   injectSharedCSS,
@@ -42,7 +43,7 @@ const LINT_FIX_ENABLED = process.env.DESIGN_LINT_FIX !== "0";
  * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
  */
 const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "openai/gpt-5.4-mini";
+const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "gemini-3.1-pro-preview";
 const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────
@@ -293,17 +294,35 @@ EDITABILITY RULES (so users can click + edit in the live editor):
 
 // ── Agents (lazy-initialized with skill) ──────────────────────
 
-let _designSystemAgent: Agent | null = null;
-async function getDesignSystemAgent(): Promise<Agent> {
-  if (!_designSystemAgent) {
-    const skillPath = path.resolve(process.cwd(), ".agents/skills/hallmark");
-    const hallmarkSkill = await loadSkillFromDir(skillPath);
-    const mySkillToolset = new SkillToolset({ skills: [hallmarkSkill] });
+/**
+ * Design-system planner agent, built per SELECTED skill. The skill is chosen
+ * upstream by the skill selector (see skill-selector.ts) and its full body is
+ * injected into the planner's system prompt here — this is the "next agent
+ * reads the selected skill" step of the flow.
+ *
+ * Cached by slug so repeated requests reuse the runner. A missing/empty skill
+ * body never blocks the planner: it simply runs without supplementary guidance
+ * (a missing skill used to collapse every generation into the fallback plan).
+ */
+const _designSystemAgents = new Map<string, Agent>();
+async function getDesignSystemAgent(selectedSkillSlug: string): Promise<Agent> {
+  const cached = _designSystemAgents.get(selectedSkillSlug);
+  if (cached) return cached;
 
-    _designSystemAgent = new Agent({
-      name: "design_system_agent",
-      model: PLANNING_MODEL,
-      instructions: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
+  const skillBody = await loadSelectedSkillBody(selectedSkillSlug);
+  if (skillBody) {
+    console.log(`[DesignAgent] Planner skill: ${selectedSkillSlug} (${skillBody.length} chars)`);
+  } else {
+    console.warn(`[DesignAgent] Planner skill '${selectedSkillSlug}' loaded no body — planner runs without supplementary guidance.`);
+  }
+  const skillBlock = skillBody
+    ? `\n\n=== SELECTED DESIGN SKILL: ${selectedSkillSlug} ===\n${skillBody}`
+    : "";
+
+  const agent = new Agent({
+    name: "design_system_agent",
+    model: PLANNING_MODEL,
+    instructions: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
 
 Before choosing colors/fonts, think about:
 - The app's domain, audience, and emotional tone
@@ -349,13 +368,12 @@ SHARED NAVIGATION (shell.navHtml) — this is reused VERBATIM on EVERY screen, s
 - Bottom-tabs: a fixed <nav class="fixed bottom-0 left-0 right-0 ..."> with one tab per primary screen (4-5 max).
 - Keep it self-contained: no <style>, no <script>, no comments.
 
-Return valid JSON matching the required schema. No markdown, no explanation.`,
-      tools: [mySkillToolset],
-      outputSchema: DesignPlanSchema,
-      temperature: 0.7,
-    });
-  }
-  return _designSystemAgent;
+Return valid JSON matching the required schema. No markdown, no explanation.${skillBlock}`,
+    outputSchema: DesignPlanSchema,
+    temperature: 0.7,
+  });
+  _designSystemAgents.set(selectedSkillSlug, agent);
+  return agent;
 }
 
 const chatPlannerAgent = new LlmAgent({
@@ -490,6 +508,16 @@ async function getScreenGenInstructions(): Promise<string> {
   return composeSystemPrompt("app-ui", TAILWIND_COMPONENT_GUIDE);
 }
 
+/**
+ * Append the upstream-selected skill body to a composed system prompt, so the
+ * screen generator honors the same taste skill the planner used. No-op when no
+ * skill body was threaded through.
+ */
+function withSelectedSkill(base: string, skillBody?: string): string {
+  if (!skillBody) return base;
+  return `${base}\n\n=== SELECTED DESIGN SKILL ===\n${skillBody}`;
+}
+
 // ── Runner helpers ────────────────────────────────────────────
 
 function makeRunner(agent: LlmAgent, appName: string) {
@@ -622,10 +650,15 @@ function buildFallbackDesignPlan(name: string, description: string): DesignPlan 
 
 export async function generateDesignSystem(
   name: string,
-  description: string
-): Promise<DesignPlan> {
+  description: string,
+  referenceImage?: { data: string; mimeType: string },
+  selectedSkillSlug: string = DEFAULT_SKILL_SLUG
+): Promise<DesignPlan & { selectedSkill: string }> {
+  const imageDirective = referenceImage
+    ? `\n\nREFERENCE IMAGE (attached): The user attached a reference image. DERIVE the design direction from it — extract the dominant colors into the palette (primary/secondary/background/surface/accents as HEX), match the typography mood (serif vs geometric vs grotesque), the border-radius/shadow feel, and the overall aesthetic. The generated palette and fonts MUST visibly reflect the image, not a generic default.`
+    : "";
   const prompt = `Create a design system and screen plan for this app:
-App: ${name} — ${description}
+App: ${name} — ${description}${imageDirective}
 
 SCREEN PLANNING RULES (read carefully — respecting the user's intent is the #1 priority):
 - FIRST, detect the user's intended SCOPE from their request. This OVERRIDES every heuristic below:
@@ -665,9 +698,9 @@ COLOR VALUES: use HEX format only (#RRGGBB). No rgba(), no hsl().
 FONTS: use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-serif".`;
 
   try {
-    return await withRetry(async () => {
-      const dsAgent = await getDesignSystemAgent();
-      const result = await dsAgent.chat(prompt);
+    const plan = await withRetry(async () => {
+      const dsAgent = await getDesignSystemAgent(selectedSkillSlug);
+      const result = await dsAgent.chat(prompt, referenceImage);
       const raw = result.text;
       const json = tryParseJsonLoose(raw);
       if (json == null) {
@@ -684,6 +717,7 @@ FONTS: use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-s
       }
       return parsed.data;
     }, 2, "design-system");
+    return { ...plan, selectedSkill: selectedSkillSlug };
   } catch (err) {
     // Never hard-fail the whole generation over the planning step — degrade to
     // a neutral deterministic plan and let the screen generator do its job.
@@ -691,7 +725,7 @@ FONTS: use Google Font names as CSS font stacks, e.g. "Outfit, system-ui, sans-s
       "[DesignAgent] Design system planning failed after all retries — using fallback plan:",
       err instanceof Error ? err.message : err
     );
-    return buildFallbackDesignPlan(name, description);
+    return { ...buildFallbackDesignPlan(name, description), selectedSkill: selectedSkillSlug };
   }
 }
 
@@ -714,7 +748,8 @@ export async function generateScreenHtml(
   referenceImage?: { data: string; mimeType: string },
   onLint?: (screenId: string, findings: LintFinding[]) => void,
   brandContext?: string,
-  onReasoning?: (screenId: string, text: string) => void
+  onReasoning?: (screenId: string, text: string) => void,
+  selectedSkillBody?: string
 ): Promise<string> {
   const vp = VIEWPORTS[platform];
   const headTemplate = generateHtmlHead(designSystem, platform);
@@ -804,7 +839,7 @@ ${componentLibraryCtx}${referenceCtx}
 ${referenceImage ? "\nThe user attached a REFERENCE IMAGE. Match its visual style, layout, color mood, and composition as closely as the design system allows.\n" : ""}
 Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
-  const sysInstr = await getScreenGenInstructions();
+  const sysInstr = withSelectedSkill(await getScreenGenInstructions(), selectedSkillBody);
   const html = await streamScreen(sysInstr, prompt, screenId, onHtmlChunk, {
     image: referenceImage,
     onReasoning: onReasoning ? (t) => onReasoning(screenId, t) : undefined,
@@ -861,7 +896,8 @@ export async function generateLandingHtml(
   referenceImage?: { data: string; mimeType: string },
   onLint?: (screenId: string, findings: LintFinding[]) => void,
   brandContext?: string,
-  onReasoning?: (screenId: string, text: string) => void
+  onReasoning?: (screenId: string, text: string) => void,
+  selectedSkillBody?: string
 ): Promise<string> {
   const headTemplate = generateHtmlHead(designSystem, platform);
   const brandCtx = brandContext ? `\n${brandContext}\n` : "";
@@ -882,7 +918,10 @@ ${headTemplate}
 ${referenceImage ? "\nThe user attached a REFERENCE IMAGE — match its visual style, layout, color mood, and composition as closely as the design system allows.\n" : ""}
 Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
-  const sysInstr = composeSystemPrompt("landing-page", TAILWIND_COMPONENT_GUIDE);
+  const sysInstr = withSelectedSkill(
+    composeSystemPrompt("landing-page", TAILWIND_COMPONENT_GUIDE),
+    selectedSkillBody
+  );
   const html = await streamScreen(sysInstr, prompt, screenId, onHtmlChunk, {
     image: referenceImage,
     onReasoning: onReasoning ? (t) => onReasoning(screenId, t) : undefined,
@@ -911,7 +950,8 @@ export async function generateScreen(
   referenceImage?: { data: string; mimeType: string },
   onLint?: (screenId: string, findings: LintFinding[]) => void,
   brandContext?: string,
-  onReasoning?: (screenId: string, text: string) => void
+  onReasoning?: (screenId: string, text: string) => void,
+  selectedSkillBody?: string
 ): Promise<string> {
   const fn = artifactType === "landing-page" ? generateLandingHtml : generateScreenHtml;
   return fn(
@@ -927,7 +967,8 @@ export async function generateScreen(
     referenceImage,
     onLint,
     brandContext,
-    onReasoning
+    onReasoning,
+    selectedSkillBody
   );
 }
 
