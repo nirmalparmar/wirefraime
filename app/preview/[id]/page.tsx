@@ -299,6 +299,20 @@ function Lightbox({
   const count = screens.length;
   const isPhone = platform === "mobile";
 
+  // Track the window so we can fit the fixed-width design to it. Initialised
+  // from `window` (the lightbox only ever mounts after a client click).
+  const [win, setWin] = useState(() =>
+    typeof window !== "undefined"
+      ? { w: window.innerWidth, h: window.innerHeight }
+      : { w: 0, h: 0 }
+  );
+  useEffect(() => {
+    const onResize = () => setWin({ w: window.innerWidth, h: window.innerHeight });
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const close = useCallback(() => setIndex(null), [setIndex]);
   const go = useCallback(
     (dir: -1 | 1) => setIndex((index + dir + count) % count),
@@ -327,10 +341,13 @@ function Lightbox({
     return () => window.removeEventListener("keydown", onKey);
   }, [close, go, count]);
 
-  // Render the screen natively — no CSS transform — so text stays pixel-sharp,
-  // exactly like opening the exported HTML. Web/tablet fill the window width;
-  // phones show as a centred device-width column. The pages are responsive, so
-  // they lay out crisply at whatever width they're given.
+  // The exported pages are authored at a fixed device width (web = 1440px), so
+  // letting the iframe stretch to `w-full` just leaves dead space to the right
+  // on wider screens. Instead we render at the design's native width and
+  // transform-scale it to fill the window. Sizing the iframe to win.h / scale
+  // means the scaled box is exactly the viewport in both axes, so the page's
+  // own scrollbar still works. Phones stay a centred device-width column.
+  const fitScale = !isPhone && win.w > 0 ? win.w / viewport.w : 1;
   return (
     <div
       className={`fixed inset-0 z-[100] flex items-stretch justify-center overflow-hidden transition-opacity duration-300 motion-reduce:transition-none ${
@@ -345,8 +362,12 @@ function Lightbox({
         srcDoc={withPreviewGuard(screen.html)}
         sandbox="allow-scripts allow-popups"
         title={screen.name}
-        className="h-full w-full border-0 bg-white"
-        style={{ maxWidth: isPhone ? viewport.w : undefined }}
+        className={`border-0 bg-white ${isPhone ? "h-full w-full" : "absolute left-0 top-0 origin-top-left"}`}
+        style={
+          isPhone
+            ? { maxWidth: viewport.w }
+            : { width: viewport.w, height: win.h ? win.h / fitScale : "100%", transform: `scale(${fitScale})` }
+        }
       />
 
       {/* Floating back button — always visible over the screen */}
