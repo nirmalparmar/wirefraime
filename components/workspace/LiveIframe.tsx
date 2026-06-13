@@ -9,7 +9,10 @@ import type { SelectedElement } from "@/lib/store/use-workspace";
    knows when real content has started rendering and can hide the shimmer. */
 const WHEEL_FORWARDER_SCRIPT = `<script>
 (function(){
-  document.addEventListener('wheel', function(e) {
+  // window + capture + preventDefault: see editor-bridge.ts. Runs before any
+  // content wheel handler can stopPropagation() and let ctrl/⌘+wheel slip
+  // through to the browser as a full-page zoom.
+  window.addEventListener('wheel', function(e) {
     e.preventDefault();
     window.parent.postMessage({
       type: 'IFRAME_WHEEL',
@@ -17,7 +20,7 @@ const WHEEL_FORWARDER_SCRIPT = `<script>
       shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey,
       clientX: e.clientX, clientY: e.clientY,
     }, '*');
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   var lastH = 0;
   function reportH(){

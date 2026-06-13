@@ -371,7 +371,7 @@ export default function Dashboard() {
 
         {/* ── Project grid ── */}
         {apps.length > 0 && (
-          <div className="proj-grid">
+          <div className="proj-grid text-foreground">
             {/* New project card */}
             <button className="proj-new" onClick={openCreate} type="button">
               <div className="proj-new-icon">
@@ -480,7 +480,7 @@ export default function Dashboard() {
         <DialogContent className="wf-dash-dialog sm:max-w-[520px]" style={{ fontFamily: SANS }}>
           <DialogHeader>
             <DialogTitle
-              className="text-[22px] tracking-tight"
+              className="text-[22px] text-foreground tracking-tight"
               style={{ fontFamily: SERIF }}
             >
               New project
@@ -506,7 +506,7 @@ export default function Dashboard() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. CRM Dashboard, Mobile Banking App"
                 autoFocus
-                className="h-10 text-[14px]"
+                className="h-10 text-sm text-foreground font-bold"
               />
             </div>
 
@@ -533,7 +533,7 @@ export default function Dashboard() {
                 onChange={(e) => setDescription(e.target.value.slice(0, DESC_LIMIT))}
                 placeholder="Describe your app, its users, and the core flows. More detail = better results."
                 rows={4}
-                className="resize-none text-[14px] leading-relaxed"
+                className="resize-none text-sm text-foreground leading-relaxed"
               />
             </div>
 

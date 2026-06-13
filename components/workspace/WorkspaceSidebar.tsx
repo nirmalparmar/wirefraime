@@ -354,7 +354,7 @@ function PromptBox({
   charCount: number;
 }) {
   return (
-    <div className="rounded-[22px] border border-foreground/[0.08] bg-card shadow-[0_2px_10px_-3px_rgba(20,20,20,0.08),0_8px_28px_-18px_rgba(20,20,20,0.18)] transition-all focus-within:border-foreground/[0.16] focus-within:shadow-[0_4px_16px_-4px_rgba(20,20,20,0.12),0_12px_36px_-20px_rgba(20,20,20,0.24)]">
+    <div className="rounded-[22px] border border-foreground/8 bg-card shadow-[0_2px_10px_-3px_rgba(20,20,20,0.08),0_8px_28px_-18px_rgba(20,20,20,0.18)] transition-all focus-within:border-foreground/16 focus-within:shadow-[0_4px_16px_-4px_rgba(20,20,20,0.12),0_12px_36px_-20px_rgba(20,20,20,0.24)]">
       {/* Context chips row (top) */}
       {(imageData || selectedElement || activeScreen) && (
         <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
@@ -661,7 +661,7 @@ export function WorkspaceSidebar({
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-sidebar">
+    <div className="flex h-full w-full flex-col bg-background">
       {/* ── Messages ── */}
       <div className="flex-1 overflow-y-auto scrollbar-none">
         {app.messages.length === 0 ? (

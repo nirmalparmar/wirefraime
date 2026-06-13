@@ -42,7 +42,7 @@ const LINT_FIX_ENABLED = process.env.DESIGN_LINT_FIX !== "0";
  * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
  */
 const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "moonshotai/kimi-k2.6";
+const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "openai/gpt-5.4-mini";
 const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────

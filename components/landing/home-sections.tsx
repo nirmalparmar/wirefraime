@@ -70,7 +70,7 @@ export function PromptHero({
   return (
     <section className="hero">
       <div className="hero-bg" />
-      <div className="hero-noise" />
+      {/* <div className="hero-noise" /> */}
 
       <div className="hero-content">
         <div className="hero-eyebrow">
@@ -93,7 +93,7 @@ export function PromptHero({
         </h1>
         <p className="hero-sub">
           One prompt becomes a complete design system and every screen of your
-          product — editable on canvas, exportable as code.
+          product, editable on canvas, exportable as code.
         </p>
 
         <div className="prompt-box">
