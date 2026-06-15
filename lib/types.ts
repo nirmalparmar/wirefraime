@@ -13,7 +13,8 @@ export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  image?: string; // base64 data URL
+  image?: string; // base64 data URL (legacy single-image; kept for back-compat)
+  images?: string[]; // base64 data URLs — all images attached to this message
   timestamp: number;
   agentSteps?: AgentStep[];
 }

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en" data-anim="rich">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- SEO / social: fill these in for the real product -->
+<title>Product — one-line value proposition</title>
+<meta name="description" content="One sentence: what it is and who it's for." />
+<meta property="og:title" content="Product — one-line value proposition" />
+<meta property="og:description" content="One sentence: what it is and who it's for." />
+
+<!-- Fonts: swap for the pairing your chosen direction calls for (see references/themes.md).
+     This default is a serif display + sans body ("digital"/"aurora"-friendly). -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+<style>
+  /* ============================================================
+     TOKEN CONTRACT — commit to the aesthetic here, then build.
+     Re-skin the whole page by editing the values in :root.
+     (See references/effects.md and references/themes.md.)
+     ============================================================ */
+  :root {
+    /* color — keep disciplined: bg, surface, ink, muted, ONE accent */
+    --bg:        #ffffff;
+    --surface:   #f6f7f9;
+    --ink:       #14171f;
+    --muted:     #6b7280;
+    --accent:    #2f7fff;
+    --accent-ink:#ffffff;
+    --border:    rgba(20,24,33,.08);
+
+    /* type */
+    --font-display: "Instrument Serif", Georgia, serif;
+    --font-body:    "Inter", system-ui, -apple-system, sans-serif;
+
+    /* spacing rhythm — 8px base */
+    --space-section: clamp(4rem, 9vw, 8rem);
+    --maxw: 1200px;
+
+    /* radius scale from one base */
+    --r:    14px;
+    --r-sm: calc(var(--r) - 6px);
+    --r-lg: calc(var(--r) + 10px);
+
+    /* shadow ladder — layered, tinted, negative-spread */
+    --shadow-sm:    0 1px 2px rgba(20,24,33,.06);
+    --shadow-card:  0 30px 60px -30px rgba(20,24,33,.28);
+    --shadow-float: 0 18px 38px -12px rgba(20,24,33,.20);
+
+    /* signature easings (never the browser defaults) */
+    --ease-pop: cubic-bezier(.16,1,.3,1);
+    --ease-out: cubic-bezier(.22,1,.36,1);
+  }
+
+  /* ---- base ---- */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--font-body); line-height: 1.5;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 400; line-height: 1.02;
+               letter-spacing: -0.02em; margin: 0; }
+  a { color: inherit; text-decoration: none; }
+
+  /* ---- layout ---- */
+  .section   { padding-block: var(--space-section); }
+  .container { max-width: var(--maxw); margin-inline: auto;
+               padding-inline: clamp(1.25rem, 4vw, 2rem); }
+
+  /* ---- buttons ---- */
+  .btn { display: inline-flex; align-items: center; gap: .5rem;
+         padding: .8rem 1.4rem; border-radius: 999px; font-weight: 600;
+         font-size: .95rem; cursor: pointer; border: 1px solid transparent;
+         transition: transform .2s var(--ease-out), box-shadow .2s var(--ease-out); }
+  .btn:active { transform: scale(.98); }
+  .btn-primary { background: var(--accent); color: var(--accent-ink);
+                 box-shadow: 0 14px 26px -10px var(--accent); }
+  .btn-primary:hover { transform: translateY(-2px); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--border); }
+  .btn .arrow { transition: transform .2s var(--ease-out); }
+  .btn:hover .arrow { transform: translateX(4px); }
+
+  /* ---- eyebrow pill / glass ---- */
+  .pill { display: inline-flex; align-items: center; gap: .5rem;
+          padding: .35rem .8rem; border-radius: 999px; font-size: .8rem; color: var(--muted);
+          background: rgba(255,255,255,.7); backdrop-filter: blur(10px);
+          border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+
+  /* ============================================================
+     MOTION PRIMITIVES (see references/motion.md)
+     ============================================================ */
+  .reveal { opacity: 0; transform: translateY(24px);
+            transition: opacity .8s var(--ease-pop), transform .8s var(--ease-pop);
+            transition-delay: calc(var(--i, 0) * 80ms); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+  html[data-anim="off"] .reveal { opacity: 1; transform: none; transition: none; }
+
+  /* ---- responsive helpers ---- */
+  @media (max-width: 760px) { .hide-mobile { display: none !important; } }
+</style>
+</head>
+
+<body>
+  <!-- ============ NAV ============ -->
+  <header class="container" style="display:flex; align-items:center; justify-content:space-between; padding-block:1.25rem;">
+    <a href="#" style="font-family:var(--font-display); font-size:1.4rem;">Brand</a>
+    <nav class="hide-mobile" style="display:flex; gap:2rem; color:var(--muted); font-size:.95rem;">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a href="#" class="btn btn-primary">Get started</a>
+  </header>
+
+  <!-- ============ HERO (the thesis) ============ -->
+  <section class="section container" style="text-align:center;">
+    <div class="reveal"><span class="pill">★ Replace with a real trust signal</span></div>
+    <h1 class="reveal" style="--i:1; font-size:clamp(2.75rem, 7vw, 5.25rem); margin:1.25rem auto; max-width:14ch;">
+      The headline is the<br><em>value proposition</em>, not a greeting
+    </h1>
+    <p class="reveal" style="--i:2; color:var(--muted); font-size:1.15rem; max-width:55ch; margin:0 auto 2rem;">
+      One or two sentences making the promise concrete: who it's for and the outcome
+      they get. Specific beats clever.
+    </p>
+    <div class="reveal" style="--i:3; display:flex; gap:.75rem; justify-content:center;">
+      <a href="#" class="btn btn-primary">Start free <span class="arrow">→</span></a>
+      <a href="#" class="btn btn-ghost">See how it works</a>
+    </div>
+
+    <!-- HERO VISUAL: replace this placeholder with a real device/product mock.
+         See references/effects.md → "Device & product mockups". -->
+    <div class="reveal" style="--i:4; margin-top:3.5rem;">
+      <div style="max-width:900px; margin:0 auto; aspect-ratio:16/9; border-radius:var(--r-lg);
+                  background:var(--surface); box-shadow:var(--shadow-card);
+                  display:grid; place-items:center; color:var(--muted);">
+        Build a product-specific mock here, not a stock image.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TODO: compose the rest from references/sections.md ============
+       social proof marquee → features (bento) → how it works → stats (count-up)
+       → testimonials → pricing → FAQ → final CTA → footer.
+       Wrap each section's elements in .reveal. Write real copy. -->
+
+  <footer class="section container" style="border-top:1px solid var(--border); color:var(--muted); font-size:.9rem;">
+    <p>© <span id="yr"></span> Brand. Built with intention.</p>
+  </footer>
+
+  <script>
+    document.getElementById("yr").textContent = new Date().getFullYear();
+
+    /* Reveal-on-scroll: tuned to fire just before full entry, once each. */
+    if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const io = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+        }
+      }, { threshold: 0.12, rootMargin: "0px 0px -8% 0px" });
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+    } else {
+      document.documentElement.dataset.anim = "off";
+    }
+
+    /* Count-up helper — give a number <span class="count" data-to="2400000" data-suffix="+"></span>
+       (see references/motion.md for the full version). */
+    const counters = document.querySelectorAll(".count");
+    if (counters.length) {
+      const fmt = (n) => n.toLocaleString();
+      const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const run = (el) => {
+        const to = +el.dataset.to, suf = el.dataset.suffix || "";
+        if (reduce) { el.textContent = fmt(to) + suf; return; }
+        const t0 = performance.now(), dur = 1400;
+        const tick = (t) => {
+          const p = Math.min((t - t0) / dur, 1), eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = fmt(Math.round(to * eased)) + suf;
+          if (p < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      };
+      const cio = new IntersectionObserver((es) => es.forEach((e) => {
+        if (e.isIntersecting) { run(e.target); cio.unobserve(e.target); }
+      }), { threshold: 0.4 });
+      counters.forEach((el) => cio.observe(el));
+    }
+  </script>
+</body>
+</html>

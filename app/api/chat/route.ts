@@ -17,13 +17,14 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  const { message, screens, designSystem, messages, image, selectedElement, platform, appName, appDescription, activeScreenId, projectId } =
+  const { message, screens, designSystem, messages, image, images, selectedElement, platform, appName, appDescription, activeScreenId, projectId } =
     (await req.json()) as {
       message: string;
       screens: Screen[];
       designSystem: DesignSystem;
       messages: { role: string; content: string }[];
       image?: string;
+      images?: string[];
       selectedElement?: SelectedElementContext | null;
       platform?: Platform;
       appName?: string;
@@ -31,6 +32,9 @@ export async function POST(req: NextRequest) {
       activeScreenId?: string | null;
       projectId?: string;
     };
+
+  // Accept either the new `images[]` array or the legacy single `image`.
+  const allImages = images?.length ? images : image ? [image] : undefined;
 
   // Resolve internal user for S3 persistence
   let internalUserId: string | null = null;
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest) {
 
         send("step", { label: "Planning..." });
 
-        for await (const evt of streamChatEdit(message, validScreens, designSystem, messages, platform ?? "web", image, selectedElement, appName, appDescription, activeScreenId)) {
+        for await (const evt of streamChatEdit(message, validScreens, designSystem, messages, platform ?? "web", allImages, selectedElement, appName, appDescription, activeScreenId)) {
           if (evt.type === "plan") {
             send("plan", {
               reply: evt.reply,

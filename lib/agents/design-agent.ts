@@ -142,7 +142,7 @@ type Critique = z.infer<typeof CritiqueSchema>;
 let cachedSkillContent: string | null = null;
 async function getSkillInstructions(): Promise<string> {
   if (!cachedSkillContent || process.env.NODE_ENV === "development") {
-    const skillPath = path.resolve(process.cwd(), ".agents/skills/frontend-design");
+    const skillPath = path.resolve(process.cwd(), ".agents/skills/landing-page-builder");
     const skill = await loadSkillFromDir(skillPath);
     cachedSkillContent = skill.instructions;
     console.log(`[DesignAgent] Skill loaded: ${cachedSkillContent.length} chars`);
@@ -532,10 +532,13 @@ function buildMessage(prompt: string | Content): Content {
   return typeof prompt === "string" ? userMessage(prompt) : prompt;
 }
 
-function multimodalMessage(text: string, imageBase64?: string, mimeType?: string): Content {
+function multimodalMessage(
+  text: string,
+  images: { data: string; mimeType: string }[] = []
+): Content {
   const parts: Part[] = [{ text }];
-  if (imageBase64 && mimeType) {
-    parts.push({ inlineData: { mimeType, data: imageBase64 } });
+  for (const img of images) {
+    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
   }
   return { role: "user", parts };
 }
@@ -1101,7 +1104,7 @@ export async function* streamChatEdit(
   designSystem: DesignSystem,
   messages: { role: string; content: string }[],
   platform: Platform = "web",
-  image?: string,
+  images?: string[],
   selectedElement?: SelectedElementContext | null,
   appName?: string,
   appDescription?: string,
@@ -1121,7 +1124,14 @@ export async function* streamChatEdit(
     ? `\n\nUser has selected an element on the active screen:\n  - XPath: ${selectedElement.xpath}\n  - Tag: <${selectedElement.tagName}>\n  - Text: "${selectedElement.textContent || "(no direct text)"}"\nThe user's request likely refers to this specific element or its surrounding section.`
     : "";
 
-  const imageCtx = image ? "\n\nThe user has also attached a reference image. Use it to understand the visual changes they want." : "";
+  // Parse every attached image once; reused across plan / patch / regen passes.
+  const parsedImages = (images ?? [])
+    .map((img) => parseDataUrl(img))
+    .filter((p): p is { mimeType: string; data: string } => p != null);
+
+  const imageCtx = parsedImages.length
+    ? `\n\nThe user has also attached ${parsedImages.length === 1 ? "a reference image" : `${parsedImages.length} reference images`}. Use ${parsedImages.length === 1 ? "it" : "them"} to understand the visual changes they want.`
+    : "";
 
   const activeScreenCtx = activeScreenId
     ? `\nUser is currently viewing screen with id: "${activeScreenId}". If the request is ambiguous about which screen to edit, prefer this one.`
@@ -1141,9 +1151,8 @@ Decide the action: "create" if the user wants a brand new screen, or "edit" to m
 For "edit": choose the most appropriate screen id from the list, or use "ALL" if the change applies to every screen.
 For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
 
-  const parsedImage = image ? parseDataUrl(image) : null;
-  const planMessage = parsedImage
-    ? multimodalMessage(planPromptText, parsedImage.data, parsedImage.mimeType)
+  const planMessage = parsedImages.length
+    ? multimodalMessage(planPromptText, parsedImages)
     : planPromptText;
 
   const planRaw = await withRetry(
@@ -1314,8 +1323,8 @@ ${!isMultiScreen && selectedElement ? `\nTarget element: XPath="${selectedElemen
 Produce minimum patch operations.
 CRITICAL: Every search string MUST include a unique anchor attribute from the element — \`data-wf-id="..."\` (present on every element) or \`data-wf-name="..."\` — copied VERBATIM from the HTML above to guarantee a match. Prefer class-attribute swaps over full element rewrites.`;
 
-    const patchMessage = parsedImage
-      ? multimodalMessage(patchPromptText, parsedImage.data, parsedImage.mimeType)
+    const patchMessage = parsedImages.length
+      ? multimodalMessage(patchPromptText, parsedImages)
       : patchPromptText;
 
     let patchSucceeded = false;
@@ -1400,7 +1409,7 @@ Output the COMPLETE modified HTML. Preserve all unchanged parts exactly.`;
         model: STREAMING_MODEL,
         temperature: 0.4,
         maxOutputTokens: 24576,
-        image: parsedImage ?? undefined,
+        images: parsedImages,
       })) {
         if (isFirstChunk) {
           chunk = stripLeadingFence(chunk);

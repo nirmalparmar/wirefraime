@@ -455,7 +455,7 @@ export function WorkspaceProvider({
             id: m.id,
             role: m.role,
             content: m.content,
-            image: m.image,
+            image: m.image ?? m.images?.[0] ?? null,
             agentSteps: m.agentSteps,
             sortOrder: i,
           }))

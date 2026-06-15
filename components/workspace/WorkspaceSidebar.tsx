@@ -8,6 +8,7 @@ import type { Message, AgentStep } from "@/lib/types";
 /* ── Constants ──────────────────────────────────────────────── */
 const MAX_IMAGE_DIM = 1024;
 const MAX_CHARS = 2000;
+const MAX_IMAGES = 6;
 
 /* ── Image utils ────────────────────────────────────────────── */
 function resizeImage(file: File): Promise<string> {
@@ -286,11 +287,18 @@ function ChatMessage({ msg, live }: { msg: Message; live: boolean }) {
   const hasSteps = msg.agentSteps && msg.agentSteps.length > 0;
 
   if (isUser) {
+    const imgs = msg.images?.length ? msg.images : msg.image ? [msg.image] : [];
     return (
       <div className="flex justify-end">
         <div className="max-w-[88%] rounded-[16px] rounded-br-[6px] bg-foreground/[0.05] px-3.5 py-2.5 text-[14px] leading-[1.6] text-foreground">
-          {msg.image && <img src={msg.image} alt="" className="mb-2 max-h-28 rounded-lg" />}
-          <p className="m-0 whitespace-pre-wrap break-words">{msg.content}</p>
+          {imgs.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-1.5">
+              {imgs.map((src, i) => (
+                <img key={i} src={src} alt="" className="max-h-28 rounded-lg" />
+              ))}
+            </div>
+          )}
+          {msg.content && <p className="m-0 whitespace-pre-wrap break-words">{msg.content}</p>}
         </div>
       </div>
     );
@@ -323,8 +331,9 @@ function PromptBox({
   onBlur,
   isActive,
   canSend,
-  imageData,
-  onClearImage,
+  images,
+  onRemoveImage,
+  onAddFiles,
   onAttach,
   textareaRef,
   selectedElement,
@@ -343,8 +352,9 @@ function PromptBox({
   onBlur: () => void;
   isActive: boolean;
   canSend: boolean;
-  imageData: string | null;
-  onClearImage: () => void;
+  images: string[];
+  onRemoveImage: (index: number) => void;
+  onAddFiles: (files: File[]) => void;
   onAttach: () => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   selectedElement: { tagName: string; textContent?: string } | null;
@@ -353,10 +363,44 @@ function PromptBox({
   onClearScreen: () => void;
   charCount: number;
 }) {
+  const [dragOver, setDragOver] = useState(false);
+
   return (
-    <div className="rounded-[22px] border border-foreground/8 bg-card shadow-[0_2px_10px_-3px_rgba(20,20,20,0.08),0_8px_28px_-18px_rgba(20,20,20,0.18)] transition-all focus-within:border-foreground/16 focus-within:shadow-[0_4px_16px_-4px_rgba(20,20,20,0.12),0_12px_36px_-20px_rgba(20,20,20,0.24)]">
+    <div
+      onDragOver={e => {
+        if (isActive || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false);
+      }}
+      onDrop={e => {
+        if (isActive) return;
+        e.preventDefault();
+        setDragOver(false);
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+        if (files.length) onAddFiles(files);
+      }}
+      className={`relative rounded-[22px] border bg-card shadow-[0_2px_10px_-3px_rgba(20,20,20,0.08),0_8px_28px_-18px_rgba(20,20,20,0.18)] transition-all focus-within:shadow-[0_4px_16px_-4px_rgba(20,20,20,0.12),0_12px_36px_-20px_rgba(20,20,20,0.24)] ${
+        dragOver ? "border-primary/50" : "border-foreground/8 focus-within:border-foreground/16"
+      }`}
+    >
+      {/* Drag-and-drop overlay */}
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[22px] border-2 border-dashed border-primary/40 bg-card/85 backdrop-blur-[1px]">
+          <div className="flex items-center gap-2 text-[13px] font-medium text-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="M7 9l5-5 5 5M12 4v12" />
+            </svg>
+            Drop image{MAX_IMAGES > 1 ? "s" : ""} to attach
+          </div>
+        </div>
+      )}
+
       {/* Context chips row (top) */}
-      {(imageData || selectedElement || activeScreen) && (
+      {(images.length > 0 || selectedElement || activeScreen) && (
         <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
           {activeScreen && (
             <span className="flex h-6 items-center gap-1.5 rounded-lg border border-border/50 shadow bg-white px-2 text-[12px] text-foreground">
@@ -381,14 +425,14 @@ function PromptBox({
               </button>
             </span>
           )}
-          {imageData && (
-            <div className="relative">
-              <img src={imageData} alt="" className="block h-7 w-9 rounded-lg border border-border object-cover" />
-              <button className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-background text-foreground/40 ring-1 ring-border hover:text-foreground/70" onClick={onClearImage}>
+          {images.map((src, i) => (
+            <div key={i} className="relative">
+              <img src={src} alt="" className="block h-7 w-9 rounded-lg border border-border object-cover" />
+              <button className="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-background text-foreground/40 ring-1 ring-border hover:text-foreground/70" onClick={() => onRemoveImage(i)}>
                 <svg width="5" height="5" viewBox="0 0 8 8"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
               </button>
             </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -483,7 +527,7 @@ export function WorkspaceSidebar({
   const { app, activeScreenId, isGenerating, isSending, selectedElement } = state;
 
   const [inputValue, setInputValue] = useState("");
-  const [imageData, setImageData] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [focused, setFocused] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
@@ -496,27 +540,36 @@ export function WorkspaceSidebar({
     [app.screens, activeScreenId]
   );
   const isActive = isGenerating || isSending;
-  const canSend = !!((inputValue.trim() || imageData) && !isActive);
+  const canSend = !!((inputValue.trim() || images.length) && !isActive);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [app.messages.length, app.messages[app.messages.length - 1]?.agentSteps?.length, isSending]);
 
-  const handleImageFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/")) return;
-    try { setImageData(await resizeImage(file)); } catch { /* ignore */ }
+  const addImageFiles = useCallback(async (files: File[]) => {
+    const imgs = files.filter(f => f.type.startsWith("image/"));
+    if (!imgs.length) return;
+    const resized: string[] = [];
+    for (const f of imgs) {
+      try { resized.push(await resizeImage(f)); } catch { /* skip unreadable image */ }
+    }
+    if (!resized.length) return;
+    setImages(prev => [...prev, ...resized].slice(0, MAX_IMAGES));
   }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const files: File[] = [];
     for (const item of Array.from(e.clipboardData?.items ?? [])) {
       if (item.type.startsWith("image/")) {
-        e.preventDefault();
         const f = item.getAsFile();
-        if (f) handleImageFile(f);
-        return;
+        if (f) files.push(f);
       }
     }
-  }, [handleImageFile]);
+    if (files.length) {
+      e.preventDefault();
+      addImageFiles(files);
+    }
+  }, [addImageFiles]);
 
   function handleStop() {
     abortRef.current?.abort();
@@ -536,16 +589,16 @@ export function WorkspaceSidebar({
       return;
     }
 
-    const userMsg: Message = { id: uuid(), role: "user", content: inputValue.trim(), ...(imageData ? { image: imageData } : {}), timestamp: Date.now() };
+    const userMsg: Message = { id: uuid(), role: "user", content: inputValue.trim(), ...(images.length ? { images } : {}), timestamp: Date.now() };
     const aiId = uuid();
 
     dispatch({ type: "ADD_MESSAGE", message: userMsg });
     dispatch({ type: "ADD_MESSAGE", message: { id: aiId, role: "assistant", content: "", timestamp: Date.now(), agentSteps: [] } });
 
-    const img = imageData;
+    const imgs = images;
     const el = selectedElement ? { xpath: selectedElement.xpath, tagName: selectedElement.tagName, textContent: selectedElement.textContent } : null;
 
-    setInputValue(""); setImageData(null);
+    setInputValue(""); setImages([]);
     dispatch({ type: "SET_SENDING", isSending: true });
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
@@ -565,7 +618,7 @@ export function WorkspaceSidebar({
           designSystem: app.designSystem, platform: app.platform ?? "web",
           messages: app.messages, appName: app.name, appDescription: app.description,
           activeScreenId, projectId: app.id,
-          ...(img ? { image: img } : {}), ...(el ? { selectedElement: el } : {}),
+          ...(imgs.length ? { images: imgs } : {}), ...(el ? { selectedElement: el } : {}),
         }),
       });
 
@@ -705,8 +758,9 @@ export function WorkspaceSidebar({
           onBlur={() => setFocused(false)}
           isActive={isActive}
           canSend={canSend}
-          imageData={imageData}
-          onClearImage={() => setImageData(null)}
+          images={images}
+          onRemoveImage={i => setImages(prev => prev.filter((_, idx) => idx !== i))}
+          onAddFiles={addImageFiles}
           onAttach={() => fileRef.current?.click()}
           textareaRef={textareaRef}
           selectedElement={selectedElement}
@@ -720,8 +774,9 @@ export function WorkspaceSidebar({
           ref={fileRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = ""; }}
+          onChange={e => { const files = Array.from(e.target.files ?? []); if (files.length) addImageFiles(files); e.target.value = ""; }}
         />
       </div>
     </div>

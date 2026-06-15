@@ -285,6 +285,8 @@ export async function* streamWithGemini(
     temperature?: number;
     maxOutputTokens?: number;
     image?: { data: string; mimeType: string };
+    /** Additional inline images (multimodal). Appended after `image` if both given. */
+    images?: { data: string; mimeType: string }[];
     /** Receives thought-summary text when the model emits it. */
     onReasoning?: (text: string) => void;
   }
@@ -308,12 +310,13 @@ export async function* streamWithGemini(
     generationConfig: generationConfig as any,
   });
 
-  // Build content parts: text + optional image
+  // Build content parts: text + optional image(s)
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
     { text: prompt },
   ];
-  if (opts?.image) {
-    parts.push({ inlineData: { mimeType: opts.image.mimeType, data: opts.image.data } });
+  const allImages = [...(opts?.image ? [opts.image] : []), ...(opts?.images ?? [])];
+  for (const img of allImages) {
+    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
   }
 
   const result = await model.generateContentStream(parts);
@@ -354,6 +357,8 @@ export async function* streamWithOpenRouter(
     temperature?: number;
     maxOutputTokens?: number;
     image?: { data: string; mimeType: string };
+    /** Additional inline images (multimodal). Appended after `image` if both given. */
+    images?: { data: string; mimeType: string }[];
     /** Receives reasoning deltas for reasoning-capable models. */
     onReasoning?: (text: string) => void;
   }
@@ -367,10 +372,11 @@ export async function* streamWithOpenRouter(
     | { type: "text"; text: string }
     | { type: "image_url"; image_url: { url: string } };
   const userContent: UserContent[] = [{ type: "text", text: prompt }];
-  if (opts.image) {
+  const allImages = [...(opts.image ? [opts.image] : []), ...(opts.images ?? [])];
+  for (const img of allImages) {
     userContent.push({
       type: "image_url",
-      image_url: { url: `data:${opts.image.mimeType};base64,${opts.image.data}` },
+      image_url: { url: `data:${img.mimeType};base64,${img.data}` },
     });
   }
 
@@ -449,6 +455,8 @@ export async function* streamDesign(
     temperature?: number;
     maxOutputTokens?: number;
     image?: { data: string; mimeType: string };
+    /** Additional inline images (multimodal). Appended after `image` if both given. */
+    images?: { data: string; mimeType: string }[];
     /** Receives model reasoning/thinking text when available. */
     onReasoning?: (text: string) => void;
   }

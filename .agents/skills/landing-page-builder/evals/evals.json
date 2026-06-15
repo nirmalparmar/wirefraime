@@ -1,0 +1,29 @@
+{
+  "skill_name": "landing-page-builder",
+  "evals": [
+    {
+      "id": 0,
+      "name": "saas-api-monitoring",
+      "prompt": "I'm building a tool called PingPilot — it watches your APIs and pings you on Slack the second an endpoint goes down or gets slow. It's aimed at small dev teams who don't want to pay for Datadog. Can you build me a landing page for it? I want people to start a free trial.",
+      "expected_output": "A polished single-file HTML SaaS landing page for PingPilot: hero with clear value prop + free-trial CTA, feature section with product-specific mocks (uptime/latency/Slack), social proof, how-it-works, pricing or stats, FAQ, final CTA, footer. Bright trustworthy SaaS aesthetic, tokens, tuned motion, reduced-motion handling.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 1,
+      "name": "wellness-meditation-app",
+      "prompt": "need a landing page for my meditation app 'Stillwater'. it's got 10-min guided sessions for busy people, sleep stories, and a daily streak thing. vibe should be calm and beautiful, not corporate. goal is app store downloads.",
+      "expected_output": "A calm, beautiful single-file HTML landing page for Stillwater that does NOT look like generic corporate SaaS — soft/aurora or minimalist aesthetic, serif or elegant type, gentle motion. Hero communicating the calm benefit, app-store download CTAs, sections for sessions/sleep stories/streaks, real copy, reduced-motion handling.",
+      "files": [],
+      "assertions": []
+    },
+    {
+      "id": 2,
+      "name": "dev-cli-waitlist",
+      "prompt": "We're a tiny team launching a CLI tool called 'grape' (grep but with AI) — it searches your codebase in plain English. We're pre-launch, just collecting emails for early access. Want a coming-soon / waitlist page that feels like it's made for developers, kind of terminal-y.",
+      "expected_output": "A focused single-file HTML waitlist/coming-soon page for a developer CLI tool with a terminal/mechanical aesthetic (monospace type, restrained palette). Lean section set appropriate to a waitlist: hero with email-capture as the single primary action, a believable terminal/code demo, maybe a few proof points — not a full SaaS page bloated with pricing. Real copy, reduced-motion handling.",
+      "files": [],
+      "assertions": []
+    }
+  ]
+}
