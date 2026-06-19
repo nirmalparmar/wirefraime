@@ -32,7 +32,7 @@ CONVERSION & COPY:
 
 CRAFT:
 - Editorial typography: a large, confident display headline (`tracking-tight`), clear hierarchy, comfortable measure. The brand's display font carries identity.
-- Real imagery (Unsplash URLs matching the content), not colored rectangles. Avatars via pravatar.
+- Real imagery via deterministic URLs that never 404: photos from `https://picsum.photos/seed/<keyword>/<w>/<h>` (descriptive keyword per image), avatars via pravatar. NEVER invent Unsplash photo IDs (`images.unsplash.com/photo-…`) — they break. Not colored rectangles.
 - Iconoir icons only — never emoji.
 - Purposeful motion only (subtle reveal on scroll, hover lifts); never decorative.
 - Fully responsive: everything stacks to a single clean column on mobile.

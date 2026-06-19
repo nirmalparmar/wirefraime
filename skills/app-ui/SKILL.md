@@ -18,7 +18,7 @@ QUALITY BAR: Think Apple Music, Spotify, Stripe Dashboard, Linear, Notion, Nike 
 Use the semantic tokens and component patterns defined in the component guide in these instructions — `bg-primary`, `text-foreground`, `bg-surface`, `rounded-card`, `shadow-card`, `h-btn`, `p-card`, etc. Never `ds-*` classes or hardcoded palette colors.
 
 VISUAL RICHNESS — MANDATORY:
-- Use real images from Unsplash with specific photo URLs matching content (album art, food, products, landscapes). NEVER colored rectangles or placeholder shapes.
+- Use real images via deterministic URLs that never 404: photos from https://picsum.photos/seed/<keyword>/<w>/<h> with a descriptive, unique keyword per image (album art, food, products, landscapes). NEVER invent Unsplash photo URLs (images.unsplash.com/photo-… — you can't know real IDs, they break), and never use colored rectangles or placeholder shapes.
 - Real avatars: https://i.pravatar.cc/80?u=unique-name
 - Cards need depth — proper shadow-card, rounded-card, hover states, clear hierarchy
 - Decorative gradients (via bg-gradient-to-br from-primary to-secondary) ONLY when aesthetically purposeful

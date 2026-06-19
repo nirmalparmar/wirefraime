@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
 import { Agent, loadSkillFromDir, streamDesign } from "./adk-helpers";
-import { loadSelectedSkillBody, DEFAULT_SKILL_SLUG } from "./skill-selector";
+import { loadSelectedSkillBody, DEFAULT_SKILL_SLUG, selectDesignSkill } from "./skill-selector";
 import {
   generateHtmlHead,
   injectSharedCSS,
@@ -43,7 +43,7 @@ const LINT_FIX_ENABLED = process.env.DESIGN_LINT_FIX !== "0";
  * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
  */
 const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "gemini-3.1-pro-preview";
+const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "z-ai/glm-5.2";
 const CRITIC_MODEL = "gemini-3.1-pro-preview";
 
 // ── Zod schemas ───────────────────────────────────────────────
@@ -102,20 +102,43 @@ const DesignPlanSchema = z.object({
 });
 
 const ChatPlanSchema = z.object({
-  reply: z.string().describe("One sentence acknowledging what you will do."),
+  reply: z.string().describe("One sentence acknowledging what you will do, in the user's language."),
   action: z
-    .enum(["edit", "create"])
-    .describe("Use 'create' when the user wants a NEW screen added (e.g. 'create a login page', 'add a settings screen'). Use 'edit' when modifying existing screens."),
+    .enum(["edit", "add_screen", "generate_app", "add_variant"])
+    .describe(
+      "Route the request:\n" +
+        "- 'edit': change one or more EXISTING screens in place (colors, copy, layout, add a section).\n" +
+        "- 'add_screen': add ONE brand-new, distinct screen to the current app (e.g. 'add a settings page').\n" +
+        "- 'generate_app': the user describes a whole PRODUCT/APP that implies MANY screens (e.g. 'build a fitness app', 'a CRM', 'a food-delivery app'). Plan and generate the full screen set.\n" +
+        "- 'add_variant': create a NEW alternative/variation of an EXISTING screen, KEEPING the original (e.g. 'a light-theme version of the landing page', 'another version of this page', 'a dark-mode dashboard')."
+    ),
   targetScreenId: z
     .string()
-    .describe("For 'edit': exact ID of the screen to modify, or 'ALL' for global changes. For 'create': set to 'NEW'."),
+    .optional()
+    .describe("For 'edit' only: exact ID of the screen to modify, or 'ALL' for changes that apply to every screen."),
   newScreenName: z
     .string()
     .optional()
-    .describe("For 'create' action only: name of the new screen to create, e.g. 'Login', 'Settings', 'Profile'."),
+    .describe("For 'add_screen' / 'add_variant': a short name for the new screen, e.g. 'Login', 'Landing (Light)'."),
+  variantOfScreenId: z
+    .string()
+    .optional()
+    .describe("For 'add_variant' only: the exact ID of the existing screen this is an alternative of."),
+  appBrief: z
+    .string()
+    .optional()
+    .describe("For 'generate_app' only: a clear one-paragraph product description to plan the screen set from, derived from the user's request."),
+  artifactType: z
+    .enum(["landing-page", "app-ui"])
+    .optional()
+    .describe("For 'add_screen' / 'add_variant': classify the new screen — 'landing-page' for a marketing/landing/pricing page, 'app-ui' for an app/dashboard screen. Omit for 'generate_app' (the planner decides)."),
+  freshDesignSystem: z
+    .boolean()
+    .optional()
+    .describe("For 'add_variant': true when the variation needs its OWN look (e.g. 'light theme', 'dark mode', 'bolder/brutalist version') distinct from the current design system; false to reuse the current colors/fonts."),
   changeDescription: z
     .string()
-    .describe("Precise, detailed description of every change to make in the HTML, or for 'create': description of what the new screen should contain."),
+    .describe("Precise, detailed description: for 'edit' the exact changes; for create actions, what the new screen(s) should contain and how any variation differs."),
 });
 
 const PatchOpsSchema = z.object({
@@ -270,9 +293,13 @@ ICONS — MANDATORY Iconoir (never emoji):
   iconoir-more-horiz, iconoir-more-vert, iconoir-download, iconoir-upload, iconoir-share-android,
   iconoir-music-double-note, iconoir-play, iconoir-pause, iconoir-shuffle, iconoir-skip-next.
 
-IMAGES — use real Unsplash URLs, not placeholders:
-  Product/album/food: <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop" class="w-full aspect-square object-cover rounded-card" />
-  Avatars: <img src="https://i.pravatar.cc/80?u=unique-name" class="w-10 h-10 rounded-full" />
+IMAGES — ONLY deterministic, always-resolvable URLs. NEVER invent Unsplash photo IDs (e.g. images.unsplash.com/photo-1546069901-…) — you cannot know real IDs, so they 404 into broken-image icons.
+  Photos (products, food, places, covers, hero art): https://picsum.photos/seed/<keyword>/<w>/<h>
+    <img src="https://picsum.photos/seed/espresso-cup/400/400" class="w-full aspect-square object-cover rounded-card" alt="Espresso cup" />
+    Use a DESCRIPTIVE, UNIQUE <keyword> per image (e.g. "running-shoe", "city-skyline") so every image is stable and distinct.
+  Avatars: <img src="https://i.pravatar.cc/80?u=unique-name" class="w-10 h-10 rounded-full object-cover" alt="Ada Chen" />
+  ALWAYS add a descriptive alt="" and object-cover so images crop cleanly.
+  FORBIDDEN image hosts (they break): images.unsplash.com/photo-…, source.unsplash.com, any guessed photo ID, placehold.it, colored-rectangle placeholders.
 
 FORBIDDEN (these make the output unusable):
   - ds-card / ds-btn-primary / ds-input etc. (OLD opaque classes — DO NOT emit)
@@ -379,36 +406,32 @@ Return valid JSON matching the required schema. No markdown, no explanation.${sk
 const chatPlannerAgent = new LlmAgent({
   name: "chat_planner_agent",
   model: PLANNING_MODEL,
-  instruction: `You are an AI assistant for a wireframe design tool.
-Given an app's screens and a user request, determine the action to take: edit existing screens or create a new one.
+  instruction: `You are the ROUTER for an AI design tool. The user works inside a project that already contains some screens. Read each request and classify it into exactly ONE action, then fill the matching fields.
 
-ACTION DETECTION:
-- "create a login screen" → action: "create", newScreenName: "Login", targetScreenId: "NEW"
-- "add a settings page" → action: "create", newScreenName: "Settings", targetScreenId: "NEW"
-- "I need a profile page" → action: "create", newScreenName: "Profile", targetScreenId: "NEW"
-- "build me a checkout flow" → action: "create", newScreenName: "Checkout", targetScreenId: "NEW"
-- "make the header blue" → action: "edit", targetScreenId: specific ID
-- "change the font everywhere" → action: "edit", targetScreenId: "ALL"
+THE FOUR ACTIONS:
+- edit — change EXISTING screen(s) in place. Set targetScreenId to a specific id, or "ALL" if the change applies to every screen.
+- add_screen — add ONE brand-new, distinct screen that doesn't exist yet.
+- generate_app — the user describes a whole PRODUCT/APP that needs MANY screens. Plan and generate the full set. Put a one-paragraph product description in appBrief.
+- add_variant — create a NEW alternative version of an EXISTING screen, KEEPING the original. Set variantOfScreenId to that screen's id.
 
-Use action: "create" when the user wants a NEW screen that doesn't exist yet.
-Use action: "edit" when modifying existing screens.
+DECISIVE EXAMPLES:
+- "make the header blue" → edit, targetScreenId: <that screen's id>
+- "change the primary color everywhere" → edit, targetScreenId: "ALL"
+- "add a settings page" → add_screen, newScreenName: "Settings"
+- "build me a fitness tracking app" → generate_app, appBrief: "A fitness tracking app with a dashboard, workout library, activity log, and profile…"
+- "a CRM for sales teams" → generate_app
+- "make an alternative light-theme version of the landing page" → add_variant, variantOfScreenId: <landing id>, freshDesignSystem: true, newScreenName: "Landing (Light)", artifactType: "landing-page"
+- "another version of this page but bolder" → add_variant, freshDesignSystem: true
+- "a dark-mode variant of the dashboard" → add_variant, freshDesignSystem: true
 
-MULTI-SCREEN DETECTION (for edit action):
-If the user's request applies to ALL screens (not just one), set targetScreenId to "ALL".
-Examples of multi-screen requests:
-- "Change the primary color to blue" → ALL (affects every screen)
-- "Update the font to Inter" → ALL (global style)
-- "Make all buttons rounded" → ALL (affects buttons on every screen)
-- "Change the nav background across all pages" → ALL
-- "Use a darker background everywhere" → ALL
+KEY DISTINCTIONS (these are the cases that get misrouted — be careful):
+- Words like "alternative", "another version", "a variant", "a [light/dark/bold] version of" referring to an EXISTING screen → add_variant, NOT edit. The user wants to KEEP the original and get a NEW screen alongside it.
+- A request that names a whole app/product/tool implying multiple screens → generate_app, NOT add_screen. Phrases like "an app", "a dashboard tool", "a delivery app", "a social network" imply a full multi-screen product.
+- A request to add ONE specific named page → add_screen.
+- Choose edit ONLY when the user wants to CHANGE what already exists, in place.
 
-Examples of single-screen requests:
-- "Add a search bar to the dashboard" → specific screen ID
-- "Change the title on the settings page" → specific screen ID
-- "Remove the sidebar from the profile screen" → specific screen ID
+For edit, follow MULTI-SCREEN detection: if the request is about global styles (colors, fonts, radius, shadows) or says "all/every/across/everywhere", use targetScreenId "ALL"; otherwise the exact screen id (prefer the screen the user is currently viewing when ambiguous).
 
-When in doubt and the request mentions "all", "every", "across", "everywhere", or is about global styles (colors, fonts, border radius, shadows), use "ALL".
-Otherwise, use the exact screen ID from the provided list.
 Return valid JSON matching the required schema.`,
   outputSchema: ChatPlanSchema,
   // Thinking models consume output budget on reasoning — keep headroom or the
@@ -917,7 +940,7 @@ ${headTemplate}
 
 3. Use Tailwind semantic tokens for ALL styling — bg-primary, text-foreground, bg-surface, border-border, rounded-card, shadow-card. No hardcoded palette colors, no ds-* classes, no <style> blocks overriding components.
 
-4. Real imagery (Unsplash), Iconoir icons (never emoji), honest specific copy (no invented metrics, no filler). Fully responsive — stacks to one column on mobile.
+4. Real imagery via deterministic URLs only — photos from https://picsum.photos/seed/<keyword>/<w>/<h> (descriptive keyword per image), avatars from https://i.pravatar.cc/80?u=<name>. NEVER invent Unsplash photo IDs (they 404). Iconoir icons (never emoji), honest specific copy (no invented metrics, no filler). Fully responsive — stacks to one column on mobile.
 ${referenceImage ? "\nThe user attached a REFERENCE IMAGE — match its visual style, layout, color mood, and composition as closely as the design system allows.\n" : ""}
 Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
 
@@ -1077,14 +1100,16 @@ async function streamScreen(
 
 // ── Chat editing ──────────────────────────────────────────────
 
+export type ChatAction = "edit" | "add_screen" | "generate_app" | "add_variant";
+
 export type ChatEditEvent =
-  | { type: "plan"; reply: string; targetScreenId: string; targetScreenName: string; multiScreen: boolean; screenCount?: number; action?: "edit" | "create"; newScreenName?: string }
-  | { type: "screen_start"; screenId: string; screenName: string; index: number; total: number }
+  | { type: "plan"; reply: string; targetScreenId: string; targetScreenName: string; multiScreen: boolean; screenCount?: number; action?: ChatAction; newScreenName?: string }
+  | { type: "design_system"; designSystem: DesignSystem; platform: Platform }
+  | { type: "screen_start"; screenId: string; screenName: string; index: number; total: number; isNew?: boolean }
   | { type: "apply_op"; screenId: string; index: number; total: number; description: string }
   | { type: "apply_failed"; screenId: string; failedOps: string[]; fallback: boolean }
   | { type: "html_chunk"; screenId: string; chunk: string }
-  | { type: "screen_done"; screenId: string; html: string }
-  | { type: "screen_created"; screenId: string; screenName: string; html: string };
+  | { type: "screen_done"; screenId: string; html: string; isNew?: boolean };
 
 export interface SelectedElementContext {
   xpath: string;
@@ -1108,7 +1133,8 @@ export async function* streamChatEdit(
   selectedElement?: SelectedElementContext | null,
   appName?: string,
   appDescription?: string,
-  activeScreenId?: string | null
+  activeScreenId?: string | null,
+  screenBudget: number = Number.POSITIVE_INFINITY
 ): AsyncGenerator<ChatEditEvent> {
   // ── Phase 1: Plan ─────────────────────────────────────────
   const screenList = screens
@@ -1177,101 +1203,20 @@ For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
     };
   }
 
-  // ── Handle CREATE action ─────────────────────────────────
-  if (plan.action === "create") {
-    const newScreenName = plan.newScreenName || "New Screen";
-    const newScreenId = randomUUID();
-
-    yield {
-      type: "plan",
-      reply: plan.reply,
-      targetScreenId: "NEW",
-      targetScreenName: newScreenName,
-      multiScreen: false,
-      action: "create",
-      newScreenName,
-    };
-
-    yield {
-      type: "screen_start",
-      screenId: newScreenId,
-      screenName: newScreenName,
-      index: 1,
-      total: 1,
-    };
-
-    const referenceScreen = screens[0];
-    const vp = VIEWPORTS[platform];
-    const headTemplate = generateHtmlHead(designSystem, platform);
-    const referenceCtx = referenceScreen?.html
-      ? `\n\n${extractReferencePatterns(referenceScreen.html)}\n\nMatch the existing screen's Tailwind class patterns exactly.`
-      : "";
-    
-    const componentLibraryCtx = designSystem.componentLibrary ? `\n\nCOMPONENT LIBRARY — Use these exact HTML patterns for elements across all screens to ensure absolute consistency:\n
-Button:
-${designSystem.componentLibrary.buttonHtml}
-
-Card:
-${designSystem.componentLibrary.cardHtml}
-
-Input:
-${designSystem.componentLibrary.inputHtml}
-` : "";
-
-    const navHtml = designSystem.shell?.navHtml?.trim();
-    const navStyle = designSystem.layout?.navStyle;
-    const sharedNavCtx = navHtml && navStyle && navStyle !== "none"
-      ? `\n\nSHARED NAVIGATION — include this element VERBATIM so the new screen's nav matches the rest of the app:\n${navHtml}\n`
-      : "";
-
-    const createPrompt = `Generate a complete, self-contained HTML document for the "${newScreenName}" screen of "${appName || "App"}".
-
-Screen purpose: ${plan.changeDescription}
-App context: ${appDescription || ""}
-Platform: ${platform} (${vp.w}×${vp.h})
-
-Use this EXACT <head> section:
-${headTemplate}
-
-Use Tailwind semantic tokens (bg-primary, text-foreground, rounded-card, shadow-card, h-btn, p-card). Never use ds-* classes, hardcoded colors like bg-blue-500, or emoji icons.
-
-Realistic content, real names/numbers/dates, Iconoir icons throughout.
-${sharedNavCtx}${componentLibraryCtx}${referenceCtx}
-
-Output ONLY the HTML starting with <!DOCTYPE html>. No markdown fences.`;
-
-    const sysInstr = await getScreenGenInstructions();
-    let fullHtml = "";
-    let isFirstChunk = true;
-    for await (let chunk of streamDesign(sysInstr, createPrompt, {
-      model: STREAMING_MODEL,
-      temperature: 0.7,
-      maxOutputTokens: 65536,
-    })) {
-      if (isFirstChunk) {
-        chunk = stripLeadingFence(chunk);
-        isFirstChunk = false;
-      }
-      fullHtml += chunk;
-      yield { type: "html_chunk", screenId: newScreenId, chunk };
-    }
-
-    const { repaired, errors } = validateAndRepairHtml(fullHtml);
-    if (errors.length > 0) console.warn(`[${newScreenId}] HTML repaired:`, errors.join(", "));
-    const html = enforceSharedShell(
-      injectSharedCSS(repaired, designSystem, platform),
-      navHtml,
-      navStyle,
-      newScreenName
-    );
-
-    yield {
-      type: "screen_created",
-      screenId: newScreenId,
-      screenName: newScreenName,
-      html,
-    };
-
+  // ── Non-edit actions → creation pipeline ─────────────────
+  // add_screen / add_variant / generate_app all funnel through runCreation,
+  // which resolves the design system + screen list for the action and streams
+  // each new screen the same way /api/generate does.
+  if (plan.action !== "edit") {
+    yield* runCreation(plan, {
+      screens,
+      designSystem,
+      platform,
+      appName: appName ?? "App",
+      appDescription: appDescription ?? "",
+      referenceImage: parsedImages[0],
+      screenBudget,
+    });
     return;
   }
 
@@ -1424,5 +1369,240 @@ Output the COMPLETE modified HTML. Preserve all unchanged parts exactly.`;
       const finalHtml = injectSharedCSS(repaired, designSystem, platform);
       yield { type: "screen_done", screenId: currentScreen.id, html: finalHtml };
     }
+  }
+}
+
+// ── Creation pipeline (add_screen / add_variant / generate_app) ───────
+
+/**
+ * Plan a fresh design system for a creation request: pick the best design
+ * skill, then run the full design-system planner. Returns the plan plus the
+ * loaded skill body so the screen generators read the same skill. Degrades to
+ * the default skill on any selection failure (the planner itself already has
+ * its own fallback plan).
+ */
+async function planFreshSystem(
+  appName: string,
+  brief: string,
+  referenceImage?: { data: string; mimeType: string }
+): Promise<DesignPlan & { skillBody: string }> {
+  let skillSlug = DEFAULT_SKILL_SLUG;
+  let skillBody = "";
+  try {
+    const skill = await selectDesignSkill(appName, brief, referenceImage);
+    skillSlug = skill.slug;
+    skillBody = await loadSelectedSkillBody(skillSlug);
+  } catch {
+    /* fall back to default skill */
+  }
+  const dp = await generateDesignSystem(appName, brief, referenceImage, skillSlug);
+  return { ...dp, skillBody };
+}
+
+/**
+ * Run generateScreen (callback-based streaming) and re-expose it as an async
+ * generator: yields { chunk } for each streamed fragment, then a final
+ * { html }. This bridges the onHtmlChunk callback into the chat pipeline so
+ * newly created screens stream into the live preview exactly like /api/generate.
+ */
+async function* streamCreatedScreen(
+  artifactType: ArtifactType,
+  screenId: string,
+  screenName: string,
+  screenDescription: string,
+  appName: string,
+  appDescription: string,
+  designSystem: DesignSystem,
+  platform: Platform,
+  referenceScreensHtml: string | string[] | undefined,
+  referenceImage: { data: string; mimeType: string } | undefined,
+  selectedSkillBody: string | undefined
+): AsyncGenerator<{ chunk?: string; html?: string }> {
+  const queue: string[] = [];
+  let wake: (() => void) | null = null;
+  let done = false;
+  let finalHtml = "";
+  let error: unknown = null;
+  const notify = () => {
+    if (wake) {
+      const w = wake;
+      wake = null;
+      w();
+    }
+  };
+
+  const task = generateScreen(
+    artifactType,
+    screenId,
+    screenName,
+    screenDescription,
+    appName,
+    appDescription,
+    designSystem,
+    platform,
+    (_sid, chunk) => {
+      queue.push(chunk);
+      notify();
+    },
+    referenceScreensHtml,
+    referenceImage,
+    undefined, // onLint
+    undefined, // brandContext
+    undefined, // onReasoning
+    selectedSkillBody
+  )
+    .then((html) => {
+      finalHtml = html;
+    })
+    .catch((e) => {
+      error = e;
+    })
+    .finally(() => {
+      done = true;
+      notify();
+    });
+
+  while (true) {
+    while (queue.length) yield { chunk: queue.shift()! };
+    if (done) break;
+    await new Promise<void>((r) => {
+      wake = r;
+    });
+  }
+  await task;
+  if (error) throw error;
+  yield { html: finalHtml };
+}
+
+/**
+ * Resolve a non-edit chat request (add_screen / add_variant / generate_app)
+ * into a design system + screen list, then stream each new screen. Honors the
+ * caller's screen budget (plan quota). New screens are flagged isNew so the
+ * route persists + counts them.
+ */
+async function* runCreation(
+  plan: ChatPlan,
+  ctx: {
+    screens: Screen[];
+    designSystem: DesignSystem;
+    platform: Platform;
+    appName: string;
+    appDescription: string;
+    referenceImage?: { data: string; mimeType: string };
+    screenBudget: number;
+  }
+): AsyncGenerator<ChatEditEvent> {
+  const { screens, appName, appDescription, referenceImage, screenBudget } = ctx;
+  const action = plan.action;
+
+  let designSystem = ctx.designSystem;
+  let platform = ctx.platform;
+  let artifactType: ArtifactType = plan.artifactType ?? "app-ui";
+  let skillBody: string | undefined;
+  let emitDesignSystem = false;
+  let screensToCreate: { name: string; description: string }[] = [];
+  let seedHtml: string | undefined;
+  let targetLabel = "";
+
+  if (action === "generate_app") {
+    const brief = plan.appBrief || plan.changeDescription || appDescription;
+    const dp = await planFreshSystem(appName, brief, referenceImage);
+    designSystem = dp.designSystem;
+    platform = dp.platform;
+    artifactType = dp.artifactType;
+    skillBody = dp.skillBody;
+    emitDesignSystem = true;
+    screensToCreate = dp.screens.map((s) => ({ name: s.name, description: s.description }));
+    targetLabel = appName;
+  } else if (action === "add_variant") {
+    const ref = screens.find((s) => s.id === plan.variantOfScreenId) ?? screens[0];
+    seedHtml = ref?.html;
+    const variantName = plan.newScreenName || (ref ? `${ref.name} (Variant)` : "Variant");
+    if (plan.freshDesignSystem) {
+      const brief = `${plan.changeDescription}. This is an alternative version of the existing "${ref?.name ?? "screen"}" screen — keep the same product, change the look as described.`;
+      const dp = await planFreshSystem(appName, brief, referenceImage);
+      designSystem = dp.designSystem;
+      platform = dp.platform;
+      artifactType = dp.artifactType;
+      skillBody = dp.skillBody;
+      emitDesignSystem = true;
+    }
+    screensToCreate = [{ name: variantName, description: plan.changeDescription }];
+    targetLabel = variantName;
+  } else {
+    // add_screen — one new screen, reusing the current design system.
+    seedHtml = screens[0]?.html;
+    screensToCreate = [{ name: plan.newScreenName || "New Screen", description: plan.changeDescription }];
+    targetLabel = screensToCreate[0].name;
+  }
+
+  // Quota: a creation that would exceed the plan budget is blocked / capped.
+  if (screenBudget <= 0) {
+    yield {
+      type: "plan",
+      reply: "You've reached your screen limit on this plan. Upgrade in Billing to add more screens.",
+      targetScreenId: "NEW",
+      targetScreenName: targetLabel,
+      multiScreen: false,
+      action,
+    };
+    return;
+  }
+  if (screensToCreate.length > screenBudget) {
+    screensToCreate = screensToCreate.slice(0, Math.floor(screenBudget));
+  }
+
+  yield {
+    type: "plan",
+    reply: plan.reply,
+    targetScreenId: "NEW",
+    targetScreenName: targetLabel,
+    multiScreen: screensToCreate.length > 1,
+    screenCount: screensToCreate.length > 1 ? screensToCreate.length : undefined,
+    action,
+    newScreenName: action === "generate_app" ? undefined : targetLabel,
+  };
+
+  if (emitDesignSystem) {
+    yield { type: "design_system", designSystem, platform };
+  }
+
+  // Reference set keeps generated screens visually consistent: start from the
+  // seed screen (variants/added screens), then fold in each new screen.
+  const referenceHtmls: string[] = [];
+  if (seedHtml) referenceHtmls.push(seedHtml);
+
+  const total = screensToCreate.length;
+  for (let i = 0; i < total; i++) {
+    const spec = screensToCreate[i];
+    const screenId = randomUUID();
+
+    yield { type: "screen_start", screenId, screenName: spec.name, index: i + 1, total, isNew: true };
+
+    let html = "";
+    try {
+      for await (const evt of streamCreatedScreen(
+        artifactType,
+        screenId,
+        spec.name,
+        spec.description,
+        appName,
+        appDescription,
+        designSystem,
+        platform,
+        referenceHtmls.length ? referenceHtmls.slice(0, 3) : undefined,
+        referenceImage,
+        skillBody
+      )) {
+        if (evt.chunk !== undefined) yield { type: "html_chunk", screenId, chunk: evt.chunk };
+        else if (evt.html !== undefined) html = evt.html;
+      }
+    } catch (err) {
+      console.error(`[runCreation] screen "${spec.name}" failed:`, err);
+      continue;
+    }
+
+    if (referenceHtmls.length < 4) referenceHtmls.push(html);
+    yield { type: "screen_done", screenId, html, isNew: true };
   }
 }

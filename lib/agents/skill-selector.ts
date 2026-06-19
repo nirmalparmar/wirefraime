@@ -25,7 +25,7 @@ const SELECTION_MODEL = "gemini-3.1-pro-preview";
 
 /** Curated pool the selector may choose from. Add a skill by adding its dir. */
 const ELIGIBLE: { slug: string; dir: string }[] = [
-  { slug: "saas-landing-page", dir: ".agents/skills/saas-landing-page" },
+  { slug: "landing-page-builder", dir: ".agents/skills/landing-page-builder" },
   { slug: "frontend-design", dir: ".agents/skills/frontend-design" },
 ];
 

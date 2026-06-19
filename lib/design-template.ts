@@ -240,21 +240,99 @@ export function generateHtmlHead(ds: DesignSystem, platform: Platform): string {
 </head>`;
 }
 
+/* ── Image guardrail ──────────────────────────────────────────
+ *
+ * The model can't know real Unsplash photo IDs, so it hallucinates
+ * `images.unsplash.com/photo-<id>` URLs (and uses the discontinued
+ * `source.unsplash.com`) — both 404 into the broken-image glyph. Two layers,
+ * both deterministic and model-agnostic:
+ *   1. rewriteUnreliableImages — swap unreliable hosts for seeded Lorem Picsum
+ *      URLs (stable, never 404), preserving the requested dimensions.
+ *   2. IMG_FALLBACK_SCRIPT — a global `error` listener so ANY <img> that still
+ *      fails (a flaky avatar host, a picsum hiccup) falls back to a seeded
+ *      picsum image instead of showing a broken icon.
+ * Both run from injectSharedCSS, which is on every generate/edit/create path.
+ */
+
+// Hosts that 404 on hallucinated or expired IDs. i.pravatar.cc, picsum.photos,
+// placehold.co, dummyimage.com and data: URIs are reliable and left untouched.
+const UNRELIABLE_IMG_HOST =
+  /^(?:https?:)?\/\/(?:images\.unsplash\.com|source\.unsplash\.com|(?:www\.)?unsplash\.com|loremflickr\.com|placeimg\.com|placekitten\.com|placebear\.com|lorempixel\.com)\b/i;
+
+function imgDimension(src: string, key: "w" | "h"): number | null {
+  const m = src.match(new RegExp(`[?&](?:${key}|${key === "w" ? "width" : "height"})=(\\d{2,4})`, "i"));
+  return m ? Math.min(parseInt(m[1], 10), 2000) : null;
+}
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** Stable, descriptive seed for a Picsum URL: alt text → seed/u param → URL hash. */
+function imgSeed(tag: string, src: string): string {
+  const alt = tag.match(/\balt="([^"]+)"/i)?.[1];
+  const param = src.match(/[?&](?:u|seed|sig|id|q)=([^&"]+)/i)?.[1];
+  const slug = (alt || param || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+  return slug || `wf${hashString(src) % 100000}`;
+}
+
+/** Rewrite <img src> on unreliable hosts to seeded Lorem Picsum URLs. */
+export function rewriteUnreliableImages(html: string): string {
+  if (!html || !html.includes("<img")) return html;
+  return html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const src = tag.match(/\bsrc="([^"]*)"/i)?.[1];
+    if (!src || !UNRELIABLE_IMG_HOST.test(src)) return tag;
+    const w = imgDimension(src, "w") ?? imgDimension(src, "h") ?? 800;
+    const h = imgDimension(src, "h") ?? imgDimension(src, "w") ?? 600;
+    const replacement = `https://picsum.photos/seed/${encodeURIComponent(imgSeed(tag, src))}/${w}/${h}`;
+    return tag.replace(/\bsrc="[^"]*"/i, `src="${replacement}"`);
+  });
+}
+
+// Self-contained: no backticks / template-substitutions so it nests in the
+// template literal below. The `wfImgFixed` flag makes it idempotent (a failing
+// picsum fallback won't loop).
+const IMG_FALLBACK_SCRIPT = `(function(){
+  function fix(img){
+    if(img.dataset.wfImgFixed)return;
+    img.dataset.wfImgFixed="1";
+    var w=Math.round(img.getAttribute("width")||img.clientWidth||800)||800;
+    var h=Math.round(img.getAttribute("height")||img.clientHeight||600)||600;
+    var seed=(img.getAttribute("alt")||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,32);
+    img.src="https://picsum.photos/seed/"+(seed||"wf"+Math.floor(Math.random()*99999))+"/"+w+"/"+h;
+  }
+  document.addEventListener("error",function(e){
+    var t=e.target;
+    if(t&&t.tagName==="IMG")fix(t);
+  },true);
+})();`;
+
 /* ── Post-processing: inject base CSS + Tailwind config into generated HTML ── */
 
 export function injectSharedCSS(html: string, ds: DesignSystem, platform: Platform): string {
   if (!html) return html;
 
-  const baseCSS = generateBaseCSS(ds, platform);
-  const twConfig = generateTailwindConfig(ds, platform);
+  // Deterministic image guardrail: rewrite hosts that 404 on hallucinated IDs.
+  html = rewriteUnreliableImages(html);
+
   const headClose = html.indexOf("</head>");
   if (headClose === -1) return html;
+
+  const baseCSS = generateBaseCSS(ds, platform);
+  const twConfig = generateTailwindConfig(ds, platform);
 
   // If already has v2 markers, just update them in place
   const hasBase = html.includes("/* ds-base v2");
   const hasTwConfig = html.includes("tailwind.config = {");
+  const hasImgFallback = html.includes('data-ds="img-fallback"');
 
-  if (hasBase && hasTwConfig) return html;
+  if (hasBase && hasTwConfig && hasImgFallback) return html;
 
   const baseBlock = hasBase
     ? ""
@@ -264,7 +342,11 @@ export function injectSharedCSS(html: string, ds: DesignSystem, platform: Platfo
     ? ""
     : `<script data-ds="tw-injected">${twConfig}</script>\n`;
 
-  return html.slice(0, headClose) + baseBlock + twBlock + html.slice(headClose);
+  const imgBlock = hasImgFallback
+    ? ""
+    : `<script data-ds="img-fallback">${IMG_FALLBACK_SCRIPT}</script>\n`;
+
+  return html.slice(0, headClose) + baseBlock + twBlock + imgBlock + html.slice(headClose);
 }
 
 /* ── Shared shell enforcement ──────────────────────────────────

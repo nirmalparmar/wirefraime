@@ -5,9 +5,10 @@ import type { SelectedElementContext } from "@/lib/agents/design-agent";
 import type { Screen, DesignSystem, Platform } from "@/lib/types";
 import { resolveUserId } from "@/lib/db/helpers";
 import { uploadScreenHtml } from "@/lib/storage";
+import { getPlanState, incrementScreenUsage } from "@/lib/payments/usage";
 import { db } from "@/lib/db";
-import { screens as screensTable } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { screens as screensTable, projects as projectsTable } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -43,6 +44,12 @@ export async function POST(req: NextRequest) {
   } catch {
     // persist disabled
   }
+
+  // Screen budget gates the CREATE actions (add_screen / add_variant /
+  // generate_app). Edits are always free; only net-new screens spend quota.
+  const planState = await getPlanState(userId).catch(() => null);
+  const screenBudget = planState && planState.planId !== "free" ? planState.screensRemaining : 0;
+  const usageUserId = planState?.userId ?? internalUserId;
 
   const encoder = new TextEncoder();
 
