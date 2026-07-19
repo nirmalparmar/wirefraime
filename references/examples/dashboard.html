@@ -1,0 +1,206 @@
+<div class="shell shell-sidebar">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">L</span> Ledgerly</div>
+    <nav class="nav">
+      <span class="nav-label">Workspace</span>
+      <a class="nav-item active">Overview</a>
+      <a class="nav-item">Invoices</a>
+      <a class="nav-item">Clients</a>
+      <a class="nav-item">Payments</a>
+      <span class="nav-label">Account</span>
+      <a class="nav-item">Team</a>
+      <a class="nav-item">Settings</a>
+    </nav>
+    <div class="sidebar-footer">
+      <hr class="separator" />
+      <div class="row">
+        <span class="avatar">SR</span>
+        <div class="list-item-body">
+          <p class="text-sm font-medium">Sofia Reyes</p>
+          <p class="text-xs text-muted">sofia@ledgerly.io</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Overview</h1>
+        <p class="page-desc">3 invoices due this week, totaling $9,650.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn-outline">Export</button>
+        <button class="btn btn-primary">New invoice</button>
+      </div>
+    </header>
+
+    <div class="grid-4">
+      <div class="card">
+        <p class="stat-label">Outstanding</p>
+        <p class="stat">$24,380</p>
+        <p class="stat-delta down">▼ 8.2% vs last month</p>
+      </div>
+      <div class="card">
+        <p class="stat-label">Paid this month</p>
+        <p class="stat">$48,210</p>
+        <p class="stat-delta up">▲ 12.4% vs last month</p>
+      </div>
+      <div class="card">
+        <p class="stat-label">Avg. days to pay</p>
+        <p class="stat">11.2</p>
+        <p class="stat-delta up">▲ 1.8 days faster</p>
+      </div>
+      <div class="card">
+        <p class="stat-label">Active clients</p>
+        <p class="stat">38</p>
+        <p class="stat-delta">4 added this month</p>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card span-2">
+        <div class="card-header">
+          <div>
+            <p class="card-title">Cash collected</p>
+            <p class="card-desc">Last 6 months</p>
+          </div>
+          <div class="legend">
+            <span><span class="swatch"></span>2026</span>
+            <span><span class="swatch muted"></span>2025</span>
+          </div>
+        </div>
+        <div class="chart">
+          <svg class="chart-line" viewBox="0 0 100 40" preserveAspectRatio="none">
+            <path class="area" d="M0,30 L20,26 L40,28 L60,18 L80,14 L100,8 L100,40 L0,40 Z"></path>
+            <polyline class="line-muted line" points="0,34 20,32 40,33 60,28 80,26 100,24"></polyline>
+            <polyline class="line" points="0,30 20,26 40,28 60,18 80,14 100,8"></polyline>
+          </svg>
+          <div class="chart-labels">
+            <span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <p class="card-title">Recent activity</p>
+        </div>
+        <ul class="list">
+          <li class="list-item">
+            <span class="avatar avatar-sm">NW</span>
+            <div class="list-item-body">
+              <p class="list-item-title">Northwind paid #1042</p>
+              <p class="list-item-desc">$3,200 via bank transfer</p>
+            </div>
+            <span class="list-item-meta">2h</span>
+          </li>
+          <li class="list-item">
+            <span class="avatar avatar-sm">OV</span>
+            <div class="list-item-body">
+              <p class="list-item-title">Invoice #1047 sent</p>
+              <p class="list-item-desc">Oval Studio · $1,850</p>
+            </div>
+            <span class="list-item-meta">5h</span>
+          </li>
+          <li class="list-item">
+            <span class="avatar avatar-sm">KP</span>
+            <div class="list-item-body">
+              <p class="list-item-title">Reminder scheduled</p>
+              <p class="list-item-desc">Kapoor & Co · due Friday</p>
+            </div>
+            <span class="list-item-meta">1d</span>
+          </li>
+          <li class="list-item">
+            <span class="avatar avatar-sm">AT</span>
+            <div class="list-item-body">
+              <p class="list-item-title">Atlas Freight signed up</p>
+              <p class="list-item-desc">Added by Sofia</p>
+            </div>
+            <span class="list-item-meta">2d</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">Invoices due soon</h2>
+        <button class="btn btn-ghost btn-sm">View all →</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th>Client</th>
+              <th>Status</th>
+              <th>Due</th>
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="font-mono text-sm">#1044</td>
+              <td>
+                <div class="row">
+                  <span class="avatar avatar-sm">HB</span>
+                  <p class="font-medium">Harbor Books</p>
+                </div>
+              </td>
+              <td><span class="badge badge-warning"><span class="dot"></span>Due soon</span></td>
+              <td class="text-muted">Jul 22</td>
+              <td class="num">$4,500</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-sm">#1041</td>
+              <td>
+                <div class="row">
+                  <span class="avatar avatar-sm">KP</span>
+                  <p class="font-medium">Kapoor &amp; Co</p>
+                </div>
+              </td>
+              <td><span class="badge badge-warning"><span class="dot"></span>Due soon</span></td>
+              <td class="text-muted">Jul 24</td>
+              <td class="num">$2,950</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-sm">#1038</td>
+              <td>
+                <div class="row">
+                  <span class="avatar avatar-sm">OV</span>
+                  <p class="font-medium">Oval Studio</p>
+                </div>
+              </td>
+              <td><span class="badge badge-destructive"><span class="dot"></span>Overdue</span></td>
+              <td class="text-muted">Jul 12</td>
+              <td class="num">$2,200</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-sm">#1046</td>
+              <td>
+                <div class="row">
+                  <span class="avatar avatar-sm">AT</span>
+                  <p class="font-medium">Atlas Freight</p>
+                </div>
+              </td>
+              <td><span class="badge badge-success"><span class="dot"></span>Sent</span></td>
+              <td class="text-muted">Aug 02</td>
+              <td class="num">$6,120</td>
+            </tr>
+            <tr>
+              <td class="font-mono text-sm">#1045</td>
+              <td>
+                <div class="row">
+                  <span class="avatar avatar-sm">NW</span>
+                  <p class="font-medium">Northwind</p>
+                </div>
+              </td>
+              <td><span class="badge badge-outline">Draft</span></td>
+              <td class="text-muted">—</td>
+              <td class="num">$1,780</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>

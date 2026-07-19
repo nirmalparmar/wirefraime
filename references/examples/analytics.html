@@ -1,0 +1,175 @@
+<div class="shell shell-sidebar">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">S</span> Signalbox</div>
+    <nav class="nav">
+      <span class="nav-label">Product</span>
+      <a class="nav-item">Home</a>
+      <a class="nav-item active">Analytics</a>
+      <a class="nav-item">Funnels</a>
+      <a class="nav-item">Cohorts</a>
+      <span class="nav-label">Manage</span>
+      <a class="nav-item">Data sources</a>
+      <a class="nav-item">Settings</a>
+    </nav>
+    <div class="sidebar-footer">
+      <hr class="separator" />
+      <div class="row">
+        <span class="avatar">AK</span>
+        <div class="list-item-body">
+          <p class="text-sm font-medium">Ada Kim</p>
+          <p class="text-xs text-muted">ada@signalbox.dev</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Analytics</h1>
+        <p class="page-desc">Product usage across all workspaces.</p>
+      </div>
+      <div class="page-actions">
+        <button class="btn btn-outline">Last 30 days ▾</button>
+        <button class="btn btn-primary">Share report</button>
+      </div>
+    </header>
+
+    <div class="tabs tabs-line">
+      <button class="tab active">Engagement</button>
+      <button class="tab">Retention</button>
+      <button class="tab">Feature adoption</button>
+      <button class="tab">Revenue</button>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <p class="stat-label">Weekly active users</p>
+        <p class="stat">18,402</p>
+        <p class="stat-delta up">▲ 6.1% vs previous period</p>
+      </div>
+      <div class="card">
+        <p class="stat-label">Median session</p>
+        <p class="stat">7m 42s</p>
+        <p class="stat-delta up">▲ 0m 38s</p>
+      </div>
+      <div class="card">
+        <p class="stat-label">Churn risk accounts</p>
+        <p class="stat">23</p>
+        <p class="stat-delta up">▼ 4 fewer than June</p>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card span-2">
+        <div class="card-header">
+          <div>
+            <p class="card-title">Daily active users</p>
+            <p class="card-desc">Jun 19 – Jul 19</p>
+          </div>
+          <div class="legend">
+            <span><span class="swatch"></span>This period</span>
+            <span><span class="swatch muted"></span>Previous</span>
+          </div>
+        </div>
+        <div class="chart">
+          <div class="chart-bars">
+            <div class="bar h-40"></div><div class="bar h-50"></div><div class="bar h-40"></div>
+            <div class="bar h-60"></div><div class="bar h-70"></div><div class="bar h-50"></div>
+            <div class="bar h-30"></div><div class="bar h-60"></div><div class="bar h-70"></div>
+            <div class="bar h-80"></div><div class="bar h-70"></div><div class="bar h-90"></div>
+            <div class="bar h-60"></div><div class="bar h-40"></div><div class="bar h-80"></div>
+            <div class="bar h-90"></div><div class="bar h-100"></div><div class="bar h-80"></div>
+          </div>
+          <div class="chart-labels">
+            <span>Jun 19</span><span>Jun 26</span><span>Jul 3</span><span>Jul 10</span><span>Jul 19</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <p class="card-title">Top features</p>
+        </div>
+        <div class="stack">
+          <div class="stack-sm stack">
+            <div class="spread">
+              <p class="text-sm font-medium">Dashboards</p>
+              <p class="text-sm text-muted">82%</p>
+            </div>
+            <div class="progress"><div class="progress-bar w-80"></div></div>
+          </div>
+          <div class="stack-sm stack">
+            <div class="spread">
+              <p class="text-sm font-medium">Alerts</p>
+              <p class="text-sm text-muted">64%</p>
+            </div>
+            <div class="progress"><div class="progress-bar w-60"></div></div>
+          </div>
+          <div class="stack-sm stack">
+            <div class="spread">
+              <p class="text-sm font-medium">SQL explorer</p>
+              <p class="text-sm text-muted">47%</p>
+            </div>
+            <div class="progress"><div class="progress-bar w-50"></div></div>
+          </div>
+          <div class="stack-sm stack">
+            <div class="spread">
+              <p class="text-sm font-medium">Exports</p>
+              <p class="text-sm text-muted">28%</p>
+            </div>
+            <div class="progress"><div class="progress-bar w-30"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">Accounts to watch</h2>
+        <button class="btn btn-ghost btn-sm">View all →</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Plan</th>
+              <th>Trend</th>
+              <th>Seats active</th>
+              <th class="num">WAU change</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><p class="font-medium">Meridian Health</p></td>
+              <td><span class="badge badge-outline">Enterprise</span></td>
+              <td><span class="badge badge-destructive"><span class="dot"></span>Declining</span></td>
+              <td class="text-muted">31 of 120</td>
+              <td class="num">−18%</td>
+            </tr>
+            <tr>
+              <td><p class="font-medium">Bolt &amp; Co</p></td>
+              <td><span class="badge badge-outline">Team</span></td>
+              <td><span class="badge badge-warning"><span class="dot"></span>Flat</span></td>
+              <td class="text-muted">9 of 15</td>
+              <td class="num">−2%</td>
+            </tr>
+            <tr>
+              <td><p class="font-medium">Grove Robotics</p></td>
+              <td><span class="badge badge-outline">Enterprise</span></td>
+              <td><span class="badge badge-success"><span class="dot"></span>Growing</span></td>
+              <td class="text-muted">88 of 90</td>
+              <td class="num">+24%</td>
+            </tr>
+            <tr>
+              <td><p class="font-medium">Paperlane</p></td>
+              <td><span class="badge badge-outline">Team</span></td>
+              <td><span class="badge badge-success"><span class="dot"></span>Growing</span></td>
+              <td class="text-muted">12 of 12</td>
+              <td class="num">+11%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>

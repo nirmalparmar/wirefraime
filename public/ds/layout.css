@@ -1,0 +1,253 @@
+/* ============================================================
+   ds/layout.css — the small documented layout layer.
+   Shells, page scaffolding, stacks/rows/grids. Reads only
+   tokens.css variables.
+   ============================================================ */
+
+/* ---------- Shells ---------- */
+.shell {
+  min-height: 100vh;
+  background: var(--background);
+  position: relative; /* anchors .modal-overlay / .drawer */
+}
+
+/* Sidebar app shell: fixed-width nav + fluid content */
+.shell-sidebar {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+}
+
+/* Top-nav shell: horizontal nav, content below */
+.shell-topnav {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Centered shell: single narrow column (auth, onboarding) */
+.shell-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10) var(--space-6);
+}
+
+.shell-centered .center-col {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.center-col-wide { max-width: 720px; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-4);
+  border-right: 1px solid var(--border);
+  background: var(--card);
+  min-height: 100vh;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: var(--text-md);
+  padding: 0 var(--space-2);
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  flex: none;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  padding: var(--space-2) var(--space-2) var(--space-1);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.nav-item.active {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ---------- Top nav ---------- */
+.topnav {
+  height: var(--topnav-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+
+.topnav .nav {
+  flex-direction: row;
+  gap: var(--space-1);
+}
+
+.topnav-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* ---------- Page scaffolding ---------- */
+.page {
+  padding: var(--space-8);
+  max-width: var(--content-max);
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.page-title { font-size: var(--text-2xl); }
+
+.page-desc {
+  color: var(--muted-foreground);
+  font-size: var(--text-base);
+  margin-top: var(--space-1);
+}
+
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.section-title { font-size: var(--text-lg); }
+
+/* ---------- Stacks, rows, grids ---------- */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stack-sm { gap: var(--space-2); }
+.stack-lg { gap: var(--space-6); }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.row-wrap { flex-wrap: wrap; }
+
+.spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.grid-2,
+.grid-3,
+.grid-4 {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Sidebar-plus-main split inside a page (e.g. settings nav) */
+.split {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+/* Helpers */
+.grow { flex: 1; min-width: 0; }
+.center { display: flex; align-items: center; justify-content: center; }
+.span-2 { grid-column: span 2; }
+
+/* ---------- Responsive (mobile 390 must not overflow) ---------- */
+@media (max-width: 900px) {
+  .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .shell-sidebar { grid-template-columns: 1fr; }
+  .shell-sidebar .sidebar { display: none; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .span-2 { grid-column: auto; }
+  .page { padding: var(--space-4); }
+  .topnav { padding: 0 var(--space-4); gap: var(--space-4); }
+  .topnav .nav { display: none; }
+  .table-wrap { overflow-x: auto; }
+}
