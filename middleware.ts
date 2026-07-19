@@ -17,6 +17,7 @@ const isPublicRoute = createRouteMatcher([
   "/robots.txt",
   "/sitemap.xml",
   "/dev(.*)", // dev-only preview gates (Phase A acceptance)
+  "/api/ds(.*)", // v2 generation API — Phase D adds auth + quotas
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

@@ -79,6 +79,47 @@ export const shares = pgTable("shares", {
   index("shares_user_id_idx").on(t.userId),
 ]);
 
+// ═══ v2 design engine (DESIGN-ENGINE-PLAN.md) ════════════════
+// Screens are plain HTML fragments stored as text IN the DB (plan §1.1)
+// — no S3, no IR. Kept separate from the legacy tables above so the old
+// app keeps working while v2 is built out.
+
+export const dsProjects = pgTable("ds_projects", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  /** Clerk user id; nullable so /dev flows work before auth (Phase D wires quotas). */
+  clerkUserId: text("clerk_user_id"),
+  name: text("name").notNull(),
+  prompt: text("prompt").notNull().default(""),
+  theme: jsonb("theme").notNull(),               // Theme (lib/ds) — clamped before write
+  status: text("status").notNull().default("generating"), // "generating" | "ready" | "error"
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index("ds_projects_clerk_user_id_idx").on(t.clerkUserId),
+]);
+
+export const dsScreens = pgTable("ds_screens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").notNull().references(() => dsProjects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  purpose: text("purpose").notNull().default(""),
+  html: text("html").notNull().default(""),      // sanitized fragment — the artifact itself
+  source: text("source").notNull().default("designer"), // designer | designer-retry | fast | placeholder
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  index("ds_screens_project_id_idx").on(t.projectId),
+]);
+
+export const dsProjectsRelations = relations(dsProjects, ({ many }) => ({
+  screens: many(dsScreens),
+}));
+
+export const dsScreensRelations = relations(dsScreens, ({ one }) => ({
+  project: one(dsProjects, { fields: [dsScreens.projectId], references: [dsProjects.id] }),
+}));
+
 // ── Relations ────────────────────────────────────────────────
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
