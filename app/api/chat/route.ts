@@ -80,6 +80,9 @@ export async function POST(req: NextRequest) {
 
         send("step", { label: "Planning..." });
 
+        // Names arrive on screen_start; a new screen's screen_done needs it for the DB insert.
+        const newScreenNames = new Map<string, string>();
+
         for await (const evt of streamChatEdit(message, validScreens, designSystem, messages, platform ?? "web", allImages, selectedElement, appName, appDescription, activeScreenId)) {
           if (evt.type === "plan") {
             send("plan", {
@@ -90,11 +93,13 @@ export async function POST(req: NextRequest) {
               screenCount: evt.screenCount,
             });
           } else if (evt.type === "screen_start") {
+            if (evt.isNew) newScreenNames.set(evt.screenId, evt.screenName);
             send("screen_start", {
               screenId: evt.screenId,
               screenName: evt.screenName,
               index: evt.index,
               total: evt.total,
+              isNew: evt.isNew,
             });
           } else if (evt.type === "apply_op") {
             send("apply_op", {
@@ -112,39 +117,33 @@ export async function POST(req: NextRequest) {
           } else if (evt.type === "html_chunk") {
             send("html_chunk", { screenId: evt.screenId, chunk: evt.chunk });
           } else if (evt.type === "screen_done") {
-            send("screen_done", { screenId: evt.screenId, html: evt.html });
-            // Persist updated HTML to S3
+            send("screen_done", { screenId: evt.screenId, html: evt.html, isNew: evt.isNew });
+            // Persist HTML to S3, then upsert a brand-new screen's row or update an edited one.
             if (projectId && internalUserId && evt.html) {
               try {
                 const storageKey = await uploadScreenHtml(internalUserId, projectId, evt.screenId, evt.html);
-                await db.update(screensTable).set({
-                  storageKey,
-                  htmlSize: Buffer.byteLength(evt.html, "utf8"),
-                  updatedAt: new Date(),
-                }).where(eq(screensTable.id, evt.screenId));
+                const htmlSize = Buffer.byteLength(evt.html, "utf8");
+                if (evt.isNew) {
+                  await db.insert(screensTable).values({
+                    id: evt.screenId,
+                    projectId,
+                    name: newScreenNames.get(evt.screenId) ?? "New Screen",
+                    sortOrder: 99,
+                    storageKey,
+                    htmlSize,
+                  }).onConflictDoUpdate({
+                    target: screensTable.id,
+                    set: { storageKey, htmlSize, updatedAt: new Date() },
+                  });
+                } else {
+                  await db.update(screensTable).set({
+                    storageKey,
+                    htmlSize,
+                    updatedAt: new Date(),
+                  }).where(eq(screensTable.id, evt.screenId));
+                }
               } catch (e) {
-                console.warn(`Failed to persist chat edit for screen ${evt.screenId}:`, e);
-              }
-            }
-          } else if (evt.type === "screen_created") {
-            send("screen_created", { screenId: evt.screenId, screenName: evt.screenName, html: evt.html });
-            // Persist new screen to S3 + DB
-            if (projectId && internalUserId && evt.html) {
-              try {
-                const storageKey = await uploadScreenHtml(internalUserId, projectId, evt.screenId, evt.html);
-                await db.insert(screensTable).values({
-                  id: evt.screenId,
-                  projectId,
-                  name: evt.screenName ?? "New Screen",
-                  sortOrder: 99,
-                  storageKey,
-                  htmlSize: Buffer.byteLength(evt.html, "utf8"),
-                }).onConflictDoUpdate({
-                  target: screensTable.id,
-                  set: { storageKey, htmlSize: Buffer.byteLength(evt.html, "utf8"), updatedAt: new Date() },
-                });
-              } catch (e) {
-                console.warn(`Failed to persist new screen ${evt.screenId}:`, e);
+                console.warn(`Failed to persist screen ${evt.screenId}:`, e);
               }
             }
           }
