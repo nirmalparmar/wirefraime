@@ -103,7 +103,7 @@ function ColorRow({
         <button
           type="button"
           aria-label={`Edit ${label} color`}
-          className="size-5 shrink-0 rounded-md border border-foreground/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
+          className="size-5 shrink-0 rounded-md shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_4px_10px_-8px_rgba(20,20,20,0.4)]"
           style={{ background: value }}
           onClick={() => setOpen((v) => !v)}
         />
@@ -124,7 +124,7 @@ function ColorRow({
           }
         }}
         aria-invalid={!isLocalHex && !isValueGradient}
-        className="h-7 rounded-[8px] border border-foreground/8 bg-foreground/[0.045] px-2 text-right font-mono text-[11px] uppercase text-foreground/60 outline-none transition read-only:cursor-pointer read-only:font-sans read-only:normal-case focus:border-ws-accent/50 focus:bg-foreground/[0.065] focus:text-foreground focus:ring-2 focus:ring-ws-accent/20 aria-invalid:border-destructive/50"
+        className="h-7 rounded-[8px] border-0 bg-foreground/[0.045] px-2 text-right font-mono text-[11px] uppercase text-foreground/60 shadow-[var(--ws-inset)] outline-none transition read-only:cursor-pointer read-only:font-sans read-only:normal-case focus:bg-foreground/[0.065] focus:text-foreground focus:ring-2 focus:ring-ws-accent/20"
         onClick={() => {
           if (isValueGradient) setOpen(true);
         }}
@@ -173,8 +173,8 @@ function ColorRow({
               },
             }}
           />
-          <div className="mt-2 flex items-center gap-1.5 border-t border-foreground/8 pt-2">
-            <span aria-hidden className="size-7 shrink-0 rounded-md border border-foreground/10" style={{ background: isLocalHex || isValueGradient ? local : value }} />
+          <div className="mt-3 flex items-center gap-1.5 pt-1">
+            <span aria-hidden className="size-7 shrink-0 rounded-md shadow-[var(--ws-raised)]" style={{ background: isLocalHex || isValueGradient ? local : value }} />
             <input
               readOnly={isValueGradient}
               value={displayValue}
@@ -191,7 +191,7 @@ function ColorRow({
                   setOpen(false);
                 }
               }}
-              className="h-7 min-w-0 flex-1 rounded-md border border-foreground/8 bg-foreground/[0.05] px-2 font-mono text-[10px] uppercase text-foreground outline-none read-only:font-sans read-only:normal-case focus:border-ws-accent/50 focus:ring-2 focus:ring-ws-accent/20"
+              className="h-7 min-w-0 flex-1 rounded-md border-0 bg-foreground/[0.05] px-2 font-mono text-[10px] uppercase text-foreground shadow-[var(--ws-inset)] outline-none read-only:font-sans read-only:normal-case focus:ring-2 focus:ring-ws-accent/20"
             />
           </div>
         </div>
@@ -276,16 +276,16 @@ export function DesignSystemPanel({
   return (
     <SoftSurface
       ref={panelRef}
-      className="absolute right-4 top-4 z-40 flex w-[320px] flex-col overflow-hidden rounded-2xl animate-in fade-in slide-in-from-right-2 duration-200"
-      style={{ maxHeight: "calc(100% - 2rem)" }}
+      className="wf-studio-inspector absolute right-3 top-3 z-40 flex w-[320px] flex-col overflow-hidden rounded-xl animate-in fade-in slide-in-from-right-2 duration-150"
+      style={{ maxHeight: "calc(100% - 1.5rem)" }}
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-foreground/8 px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between px-4 py-3">
         <div>
-          <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+          <span className="text-[12px] font-semibold tracking-[-0.01em] text-foreground">
             Design system
           </span>
-          <p className="mt-0.5 text-[12px] text-foreground/45">
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
             Tokens update the prototype live.
           </p>
         </div>
@@ -309,7 +309,7 @@ export function DesignSystemPanel({
             dispatch({ type: "UPDATE_PLATFORM", platform: v as Platform })
           }
         >
-          <SelectTrigger className="h-8 w-full rounded-[10px] border-foreground/8 bg-foreground/[0.045] px-2.5 text-[13px]">
+          <SelectTrigger className="h-8 w-full rounded-[10px] border-0 bg-foreground/[0.045] px-2.5 text-[13px] shadow-[var(--ws-inset)]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper" align="start" className="min-w-[220px]">
@@ -344,7 +344,7 @@ export function DesignSystemPanel({
                 dispatch({ type: "UPDATE_DS_FONT", key: "primary", value: v })
               }
             >
-              <SelectTrigger className="h-8 w-full rounded-[10px] border-foreground/8 bg-foreground/[0.045] px-2.5 text-[13px]">
+              <SelectTrigger className="h-8 w-full rounded-[10px] border-0 bg-foreground/[0.045] px-2.5 text-[13px] shadow-[var(--ws-inset)]">
                 <SelectValue>
                   <span style={{ fontFamily: ds.fonts.primary }}>{primaryFontName}</span>
                 </SelectValue>
@@ -369,7 +369,7 @@ export function DesignSystemPanel({
                 dispatch({ type: "UPDATE_DS_FONT", key: "mono", value: v })
               }
             >
-              <SelectTrigger className="h-8 w-full rounded-[10px] border-foreground/8 bg-foreground/[0.045] px-2.5 text-[13px]">
+              <SelectTrigger className="h-8 w-full rounded-[10px] border-0 bg-foreground/[0.045] px-2.5 text-[13px] shadow-[var(--ws-inset)]">
                 <SelectValue>
                   <span style={{ fontFamily: ds.fonts.mono }}>{monoFontName}</span>
                 </SelectValue>
@@ -386,7 +386,7 @@ export function DesignSystemPanel({
         </div>
 
         <SectionLabel>Preview</SectionLabel>
-        <div className="rounded-lg border border-foreground/8 bg-foreground/[0.035] p-3">
+        <div className="rounded-xl bg-foreground/[0.035] p-3 shadow-[var(--ws-inset)]">
           <p
             className="mb-0.5 text-[14px] font-semibold leading-tight text-foreground"
             style={{ fontFamily: ds.fonts.primary }}
@@ -408,7 +408,7 @@ export function DesignSystemPanel({
         </div>
 
         <SectionLabel>Palette</SectionLabel>
-        <div className="overflow-hidden rounded-lg border border-foreground/8">
+        <div className="overflow-hidden rounded-xl shadow-[var(--ws-raised)]">
           <div
             className="flex items-center gap-2 px-3 py-2"
             style={{ background: ds.colors.primary }}

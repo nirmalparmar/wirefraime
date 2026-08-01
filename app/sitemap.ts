@@ -10,8 +10,24 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 },
+    {
+      url: `${SITE_URL}/landing-page-builder`,
+      changeFrequency: "weekly",
+      priority: 1,
+    },
     { url: `${SITE_URL}/blog`, changeFrequency: "weekly", priority: 0.8 },
+    {
+      url: `${SITE_URL}/ai-wireframe-generator`,
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
+    {
+      url: `${SITE_URL}/ai-ui-generator`,
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
     { url: `${SITE_URL}/privacy`, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${SITE_URL}/terms`, changeFrequency: "yearly", priority: 0.3 },
   ];
 
   const postRoutes: MetadataRoute.Sitemap = posts.map((post) => ({

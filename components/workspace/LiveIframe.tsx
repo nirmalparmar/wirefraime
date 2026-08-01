@@ -4,24 +4,11 @@ import { useRef, useEffect, useCallback } from "react";
 import { EDITOR_BRIDGE_SCRIPT } from "@/lib/editor-bridge";
 import type { SelectedElement } from "@/lib/store/use-workspace";
 
-/* Lightweight script injected at the start of streaming. Forwards wheel
-   events AND reports content height as the iframe fills in — so the parent
-   knows when real content has started rendering and can hide the shimmer. */
-const WHEEL_FORWARDER_SCRIPT = `<script>
+/* Lightweight script injected at the start of streaming. Reports content
+   height as the iframe fills in so the parent knows when real content has
+   started rendering and can hide the shimmer. */
+const STREAMING_HEIGHT_SCRIPT = `<script>
 (function(){
-  // window + capture + preventDefault: see editor-bridge.ts. Runs before any
-  // content wheel handler can stopPropagation() and let ctrl/⌘+wheel slip
-  // through to the browser as a full-page zoom.
-  window.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    window.parent.postMessage({
-      type: 'IFRAME_WHEEL',
-      deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode,
-      shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey,
-      clientX: e.clientX, clientY: e.clientY,
-    }, '*');
-  }, { passive: false, capture: true });
-
   var lastH = 0;
   function reportH(){
     var h = Math.max(
@@ -64,6 +51,18 @@ interface LiveIframeProps {
   onHtmlUpdated?: (html: string, editKey?: string | null) => void;
   onIframeMount?: (el: HTMLIFrameElement | null) => void;
   onContentHeight?: (height: number) => void;
+  onCanvasWheel?: (event: IframeWheelInput) => void;
+}
+
+export interface IframeWheelInput {
+  deltaX: number;
+  deltaY: number;
+  deltaMode: number;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  clientX: number;
+  clientY: number;
 }
 
 export function LiveIframe({
@@ -77,6 +76,7 @@ export function LiveIframe({
   onHtmlUpdated,
   onIframeMount,
   onContentHeight,
+  onCanvasWheel,
 }: LiveIframeProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const isStreamingRef = useRef(isStreaming);
@@ -97,8 +97,13 @@ export function LiveIframe({
 
   const onIframeMountRef = useRef(onIframeMount);
   const onContentHeightRef = useRef(onContentHeight);
-  onIframeMountRef.current = onIframeMount;
-  onContentHeightRef.current = onContentHeight;
+  const onCanvasWheelRef = useRef(onCanvasWheel);
+
+  useEffect(() => {
+    onIframeMountRef.current = onIframeMount;
+    onContentHeightRef.current = onContentHeight;
+    onCanvasWheelRef.current = onCanvasWheel;
+  }, [onIframeMount, onContentHeight, onCanvasWheel]);
 
   useEffect(() => {
     onIframeMountRef.current?.(iframeRef.current);
@@ -149,7 +154,7 @@ export function LiveIframe({
     if (!docOpenedRef.current && streamChunks.length > 0) {
       try {
         doc.open();
-        doc.write(WHEEL_FORWARDER_SCRIPT);
+        doc.write(STREAMING_HEIGHT_SCRIPT);
         docOpenedRef.current = true;
       } catch { /* ignored */ }
     }
@@ -191,8 +196,39 @@ export function LiveIframe({
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    let wheelWindow: Window | null = null;
+
+    function handleWheel(e: WheelEvent) {
+      e.preventDefault();
+      const rect = iframe!.getBoundingClientRect();
+      const scaleX = rect.width / (iframe!.offsetWidth || rect.width || 1);
+      const scaleY = rect.height / (iframe!.offsetHeight || rect.height || 1);
+
+      onCanvasWheelRef.current?.({
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaMode: e.deltaMode,
+        shiftKey: e.shiftKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        clientX: rect.left + e.clientX * scaleX,
+        clientY: rect.top + e.clientY * scaleY,
+      });
+    }
+
+    function bindWheel() {
+      wheelWindow?.removeEventListener("wheel", handleWheel, true);
+      wheelWindow = iframe!.contentWindow;
+      wheelWindow?.addEventListener("wheel", handleWheel, {
+        passive: false,
+        capture: true,
+      });
+    }
 
     function onLoad() {
+      // Direct same-origin callback avoids postMessage latency and the
+      // parent-side iframe search on every trackpad event.
+      bindWheel();
       if (isStreamingRef.current) return;
       try {
         const doc = iframe!.contentDocument;
@@ -219,8 +255,12 @@ export function LiveIframe({
         }
       } catch { /* cross-origin / closed */ }
     }
+    bindWheel();
     iframe.addEventListener("load", onLoad);
-    return () => iframe.removeEventListener("load", onLoad);
+    return () => {
+      wheelWindow?.removeEventListener("wheel", handleWheel, true);
+      iframe.removeEventListener("load", onLoad);
+    };
   }, []);
 
   return (

@@ -384,7 +384,7 @@ function WorkspaceShell() {
        3. cursor over floating UI and PLAIN scroll → let it bubble normally so
           chat messages, the property panel, etc. can scroll their content.
      Wheel events that originate inside an iframe never reach this handler —
-     they're handled by the bridge's postMessage path. */
+     the same-origin editor bridge forwards those directly to React Flow. */
   useEffect(() => {
     function isOverScrollableUi(target: EventTarget | null): boolean {
       if (!(target instanceof Element)) return false;
@@ -419,6 +419,8 @@ function WorkspaceShell() {
         applyWheelRef.current?.({
           deltaX: e.deltaX,
           deltaY: e.deltaY,
+          deltaMode: e.deltaMode,
+          shiftKey: e.shiftKey,
           ctrlKey: true,
           metaKey: e.metaKey,
           clientX: e.clientX,
@@ -435,6 +437,8 @@ function WorkspaceShell() {
         applyWheelRef.current?.({
           deltaX: e.deltaX,
           deltaY: e.deltaY,
+          deltaMode: e.deltaMode,
+          shiftKey: e.shiftKey,
           ctrlKey: false,
           clientX: e.clientX,
           clientY: e.clientY,
@@ -519,7 +523,7 @@ function WorkspaceShell() {
   }
 
   return (
-    <div className="workspace-light flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
+    <div className="workspace-light workspace-studio flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
       {/* Full-width top bar */}
       <WorkspaceTopbar
         onFocusScreen={handleFocusScreen}
@@ -549,7 +553,7 @@ function WorkspaceShell() {
       {/* Content: resizable sidebar + canvas */}
       <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
         {/* Left chat sidebar */}
-        <ResizablePanel defaultSize="360px" minSize="300px" maxSize="560px">
+        <ResizablePanel defaultSize="328px" minSize="280px" maxSize="460px">
           <WorkspaceSidebar
             streamChunksRef={streamChunksRef}
             forceCanvasUpdate={forceUpdate}
@@ -562,7 +566,7 @@ function WorkspaceShell() {
           />
         </ResizablePanel>
 
-        <ResizableHandle withHandle />
+        <ResizableHandle className="wf-studio-resize-handle" />
 
         {/* Canvas area with floating overlays */}
         <ResizablePanel minSize="40%" className="relative">

@@ -1,34 +1,20 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateObject, streamText, type LanguageModel } from "ai";
+import { generateText, streamText, Output, type LanguageModel } from "ai";
 import { z } from "zod";
 import { modelIdFor, type ModelRole } from "./config";
+import { getModel } from "./provider";
 
-export { MODEL_DESIGNER, MODEL_FAST, modelIdFor } from "./config";
+export { modelIdFor } from "./config";
 export type { ModelRole } from "./config";
+export {
+  getProvider,
+  getModel,
+  providerNameFor,
+} from "./provider";
+export type { ProviderName, ModelProvider } from "./provider";
 
-function googleApiKey(): string | undefined {
-  return (
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_API_KEY
-  );
-}
-
-/** "/" in the slug → OpenRouter, otherwise Google. */
-export function resolveModel(id: string): LanguageModel {
-  if (id.includes("/")) {
-    const openrouter = createOpenRouter({
-      apiKey: process.env.OPENROUTER_API_KEY,
-    });
-    return openrouter.chat(id);
-  }
-  const google = createGoogleGenerativeAI({ apiKey: googleApiKey() });
-  return google(id);
-}
-
-export function modelFor(role: ModelRole): LanguageModel {
-  return resolveModel(modelIdFor(role));
+/** Resolve a role to its AI SDK model: env config → provider routing. */
+function modelForRole(role: ModelRole): LanguageModel {
+  return getModel(modelIdFor(role));
 }
 
 /**
@@ -58,7 +44,7 @@ export interface LlmClient {
 export const liveLlm: LlmClient = {
   async streamHtml({ role, system, prompt, onChunk, abortSignal }) {
     const result = streamText({
-      model: modelFor(role),
+      model: modelForRole(role),
       system,
       prompt,
       abortSignal,
@@ -72,13 +58,13 @@ export const liveLlm: LlmClient = {
   },
 
   async generateJson({ role, schema, system, prompt, abortSignal }) {
-    const { object } = await generateObject({
-      model: modelFor(role),
-      schema,
+    const { output } = await generateText({
+      model: modelForRole(role),
       system,
       prompt,
       abortSignal,
+      output: Output.object({ schema }),
     });
-    return object;
+    return output;
   },
 };

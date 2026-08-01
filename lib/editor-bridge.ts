@@ -215,23 +215,6 @@ export const EDITOR_BRIDGE_SCRIPT = `
     window.parent.postMessage({ type: 'ELEMENT_SELECTED', element: describe(el) }, '*');
   }, true);
 
-  // Forward wheel events to parent for canvas pan/zoom.
-  //   - window + CAPTURE: runs before any wheel handler in the generated
-  //     screen (carousels, scroll areas, etc.). A bubble-phase listener can be
-  //     silently bypassed if such content calls stopPropagation(), which lets
-  //     ctrl/⌘+wheel escape to the browser as a full-page zoom.
-  //   - preventDefault always: blocks that native page zoom from inside the
-  //     iframe (the parent document can't reach wheel events fired in here).
-  window.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    window.parent.postMessage({
-      type: 'IFRAME_WHEEL',
-      deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode,
-      shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey,
-      clientX: e.clientX, clientY: e.clientY
-    }, '*');
-  }, { passive: false, capture: true });
-
   // Escape clears selection inside the iframe
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {

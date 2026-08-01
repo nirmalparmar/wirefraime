@@ -4,7 +4,6 @@ import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
 import { Agent, SkillToolset, loadSkillFromDir, streamDesign } from "./adk-helpers";
-import { OpenAILlm } from "./openai-llm";
 import {
   generateHtmlHead,
   injectSharedCSS,
@@ -288,7 +287,7 @@ async function getDesignSystemAgent(): Promise<Agent> {
 
     _designSystemAgent = new Agent({
       name: "design_system_agent",
-      model: new OpenAILlm(PLANNING_MODEL),
+      model: PLANNING_MODEL,
       instructions: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
 
 Before choosing colors/fonts, think about:
@@ -346,7 +345,7 @@ Return valid JSON matching the required schema. No markdown, no explanation.`,
 
 const chatPlannerAgent = new Agent({
   name: "chat_planner_agent",
-  model: new OpenAILlm(PLANNING_MODEL),
+  model: PLANNING_MODEL,
   instructions: `You are an AI assistant for a wireframe design tool.
 Given an app's screens and a user request, determine the action to take: edit existing screens or create a new one.
 
@@ -384,7 +383,7 @@ Return valid JSON matching the required schema.`,
 
 const patchAgent = new Agent({
   name: "patch_agent",
-  model: new OpenAILlm(PLANNING_MODEL),
+  model: PLANNING_MODEL,
   instructions: `You produce surgical patch operations on HTML documents.
 
 Given the current HTML and a change description, output the MINIMUM search/replace operations to achieve the change.
@@ -409,7 +408,7 @@ Return valid JSON matching the required schema. No markdown, no explanation.`,
 
 const criticAgent = new Agent({
   name: "critic_agent",
-  model: new OpenAILlm(CRITIC_MODEL),
+  model: CRITIC_MODEL,
   instructions: `You are a senior product designer reviewing a generated UI screen against a strict rubric.
 
 Rate 0-10 on:

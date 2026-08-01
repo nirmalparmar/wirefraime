@@ -12,6 +12,8 @@ export { generatePlan, fallbackPlan } from "./plan";
 export type { GenerationPlan } from "./plan";
 export { generateScreenHtml } from "./generate-screen";
 export type { GeneratedScreen, ScreenSource } from "./generate-screen";
+export { generateDesign } from "./generate-design";
+export type { GenerationEvent } from "./generate-design";
 export { placeholderScreen } from "./placeholder";
 export {
   loadGuidelines,

@@ -3,19 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { JSON_LD } from "@/components/landing/home-data";
-import {
-  CapabilitiesSection,
-  FooterCtaSection,
-  GallerySection,
-  LandingFooter,
-  LandingNavbar,
-  PricingSection,
-  ProcessSection,
-  PromptHero,
-  ProofBar,
-  TestimonialsSection,
-  TickerStrip,
-} from "@/components/landing/home-sections";
+import { FAQ } from "@/components/landing/faq";
+import { Pricing } from "@/components/landing/pricing";
+import { LandingNavbar } from "@/components/landing/sections/landing-navbar";
+import { PromptHero } from "@/components/landing/sections/prompt-hero";
+import { ProductPreviewSection } from "@/components/landing/sections/product-preview";
+import { CapabilitiesSection } from "@/components/landing/sections/capabilities";
+import { GallerySection } from "@/components/landing/sections/gallery";
+import { ProcessSection } from "@/components/landing/sections/process";
+import { FooterCtaSection } from "@/components/landing/sections/footer-cta";
+import { LandingFooter } from "@/components/landing/sections/landing-footer";
 
 export default function Home() {
   const router = useRouter();
@@ -29,25 +26,10 @@ export default function Home() {
     router.push("/dashboard");
   }
 
-  // Nav shrink-on-scroll + scroll-reveal — DOM-class side effects, scoped to this page.
+  // Scroll-reveal for .fade-up elements
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-
-    const navEl = root.querySelector("nav");
-    let ticking = false;
-    const updateNav = () => {
-      navEl?.classList.toggle("scrolled", window.scrollY > 24);
-      ticking = false;
-    };
-    const onScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(updateNav);
-        ticking = true;
-      }
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    updateNav();
 
     const obs = new IntersectionObserver(
       (entries) =>
@@ -61,10 +43,7 @@ export default function Home() {
     );
     root.querySelectorAll(".fade-up").forEach((el) => obs.observe(el));
 
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      obs.disconnect();
-    };
+    return () => obs.disconnect();
   }, []);
 
   return (
@@ -74,22 +53,30 @@ export default function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
       />
 
-      <div className="wf-landing" ref={rootRef}>
-        <TickerStrip />
+      <div
+        className="wf-landing overflow-x-hidden bg-background font-sans text-[15px] leading-[1.5] text-foreground antialiased"
+        ref={rootRef}
+      >
         <LandingNavbar />
-        <PromptHero
-          prompt={prompt}
-          onPromptChange={setPrompt}
-          onPromptSubmit={submitPrompt}
-        />
-        <ProofBar />
-        <GallerySection />
-        <CapabilitiesSection />
-        <ProcessSection />
-        <PricingSection />
-        <TestimonialsSection />
-        <FooterCtaSection />
-        <LandingFooter />
+        <div>
+          <PromptHero
+            prompt={prompt}
+            onPromptChange={setPrompt}
+            onPromptSubmit={submitPrompt}
+          />
+          <ProductPreviewSection />
+          <CapabilitiesSection />
+          <GallerySection />
+          <ProcessSection />
+          <Pricing />
+          <FAQ />
+          <FooterCtaSection
+            prompt={prompt}
+            onPromptChange={setPrompt}
+            onPromptSubmit={submitPrompt}
+          />
+          <LandingFooter />
+        </div>
       </div>
     </>
   );

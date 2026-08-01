@@ -1,9 +1,8 @@
-import { InMemoryRunner, LlmAgent } from "@google/adk";
-import type { Content, Part } from "@google/genai";
 import { z } from "zod";
 import type { DesignSystem, Screen, Platform } from "../types";
 import { VIEWPORTS } from "../constants";
 import { Agent, loadSkillFromDir, streamDesign } from "./adk-helpers";
+import { modelIdFor } from "@/lib/llm";
 import { loadSelectedSkillBody, DEFAULT_SKILL_SLUG, selectDesignSkill } from "./skill-selector";
 import {
   generateHtmlHead,
@@ -34,17 +33,14 @@ import { composeSystemPrompt } from "../design/compose-prompt";
 const LINT_FIX_ENABLED = process.env.DESIGN_LINT_FIX !== "0";
 
 /**
- * Model selection by task.
- * - PLANNING_MODEL: used for JSON-structured planners (design system, chat plan, patch ops).
- *   Flash-lite frequently returns malformed JSON here — pro is worth the cost.
- * - STREAMING_MODEL: used for long HTML bodies where speed matters more than reasoning.
- *   Configurable via DESIGN_STREAM_MODEL env var. Slug containing "/" routes
- *   through OpenRouter (e.g. "xiaomi/mimo-v2.5-pro"). Otherwise Gemini.
- * - CRITIC_MODEL: used for the critique/refine pass (short structured output).
+ * Model selection by task. No model is hardcoded — each resolves through
+ * lib/llm (Google or OpenRouter, decided by the slug), with an env override:
+ * - planningModel(): JSON-structured planners (design system, chat plan, patch
+ *   ops). Env PLANNING_MODEL, else the "designer" role (DESIGNER_MODEL).
+ * - streamingModel(): long HTML bodies. Env DESIGN_STREAM_MODEL, else "designer".
  */
-const PLANNING_MODEL = "gemini-3.1-pro-preview";
-const STREAMING_MODEL = process.env.DESIGN_STREAM_MODEL || "z-ai/glm-5.2";
-const CRITIC_MODEL = "gemini-3.1-pro-preview";
+const planningModel = () => process.env.PLANNING_MODEL?.trim() || modelIdFor("designer");
+const streamingModel = () => process.env.DESIGN_STREAM_MODEL?.trim() || modelIdFor("designer");
 
 // ── Zod schemas ───────────────────────────────────────────────
 
@@ -165,7 +161,7 @@ type Critique = z.infer<typeof CritiqueSchema>;
 let cachedSkillContent: string | null = null;
 async function getSkillInstructions(): Promise<string> {
   if (!cachedSkillContent || process.env.NODE_ENV === "development") {
-    const skillPath = path.resolve(process.cwd(), ".agents/skills/landing-page-builder");
+    const skillPath = path.resolve(process.cwd(), ".agents/skills/frontend-design");
     const skill = await loadSkillFromDir(skillPath);
     cachedSkillContent = skill.instructions;
     console.log(`[DesignAgent] Skill loaded: ${cachedSkillContent.length} chars`);
@@ -348,7 +344,7 @@ async function getDesignSystemAgent(selectedSkillSlug: string): Promise<Agent> {
 
   const agent = new Agent({
     name: "design_system_agent",
-    model: PLANNING_MODEL,
+    model: planningModel(),
     instructions: `You are a world-class design system architect. You create distinctive, memorable design systems — not generic "AI slop".
 
 Before choosing colors/fonts, think about:
@@ -403,10 +399,12 @@ Return valid JSON matching the required schema. No markdown, no explanation.${sk
   return agent;
 }
 
-const chatPlannerAgent = new LlmAgent({
+let _chatPlanner: Agent | undefined;
+function chatPlannerAgent(): Agent {
+  return (_chatPlanner ??= new Agent({
   name: "chat_planner_agent",
-  model: PLANNING_MODEL,
-  instruction: `You are the ROUTER for an AI design tool. The user works inside a project that already contains some screens. Read each request and classify it into exactly ONE action, then fill the matching fields.
+  model: planningModel(),
+  instructions: `You are the ROUTER for an AI design tool. The user works inside a project that already contains some screens. Read each request and classify it into exactly ONE action, then fill the matching fields.
 
 THE FOUR ACTIONS:
 - edit — change EXISTING screen(s) in place. Set targetScreenId to a specific id, or "ALL" if the change applies to every screen.
@@ -434,15 +432,16 @@ For edit, follow MULTI-SCREEN detection: if the request is about global styles (
 
 Return valid JSON matching the required schema.`,
   outputSchema: ChatPlanSchema,
-  // Thinking models consume output budget on reasoning — keep headroom or the
-  // visible JSON gets truncated/empty.
-  generateContentConfig: { maxOutputTokens: 8192, temperature: 0.2 },
-});
+  temperature: 0.2,
+  }));
+}
 
-const patchAgent = new LlmAgent({
+let _patchAgent: Agent | undefined;
+function patchAgent(): Agent {
+  return (_patchAgent ??= new Agent({
   name: "patch_agent",
-  model: PLANNING_MODEL,
-  instruction: `You produce surgical patch operations on HTML documents.
+  model: planningModel(),
+  instructions: `You produce surgical patch operations on HTML documents.
 
 Given the current HTML and a change description, output the MINIMUM search/replace operations to achieve the change.
 
@@ -461,13 +460,19 @@ CRITICAL RULES:
 
 Return valid JSON matching the required schema. No markdown, no explanation.`,
   outputSchema: PatchOpsSchema,
-  generateContentConfig: { maxOutputTokens: 16384, temperature: 0.1 },
-});
+  temperature: 0.1,
+  }));
+}
 
-const criticAgent = new LlmAgent({
+// NOTE: currently unused (no critique pass wired up) — kept for the optional
+// enableCritique path. Lazily constructed on the ai-sdk Agent like the others.
+let _criticAgent: Agent | undefined;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function criticAgent(): Agent {
+  return (_criticAgent ??= new Agent({
   name: "critic_agent",
-  model: CRITIC_MODEL,
-  instruction: `You are a senior product designer reviewing a generated UI screen against a strict rubric.
+  model: planningModel(),
+  instructions: `You are a senior product designer reviewing a generated UI screen against a strict rubric.
 
 Rate 0-10 on:
 - Visual hierarchy (ONE primary focus, supporting elements subordinate)
@@ -493,8 +498,9 @@ If passes=false, write a concise refineInstruction (1-3 sentences) telling the g
 
 Return valid JSON matching the required schema.`,
   outputSchema: CritiqueSchema,
-  generateContentConfig: { maxOutputTokens: 4096, temperature: 0.2 },
-});
+  temperature: 0.2,
+  }));
+}
 
 let _screenEditorInstr: string | null = null;
 async function getScreenEditorInstructions(): Promise<string> {
@@ -541,56 +547,17 @@ function withSelectedSkill(base: string, skillBody?: string): string {
   return `${base}\n\n=== SELECTED DESIGN SKILL ===\n${skillBody}`;
 }
 
-// ── Runner helpers ────────────────────────────────────────────
+// ── Runner helper ─────────────────────────────────────────────
 
-function makeRunner(agent: LlmAgent, appName: string) {
-  return new InMemoryRunner({ agent, appName });
-}
-
-function userMessage(text: string): Content {
-  return { role: "user", parts: [{ text }] };
-}
-
-function buildMessage(prompt: string | Content): Content {
-  return typeof prompt === "string" ? userMessage(prompt) : prompt;
-}
-
-function multimodalMessage(
-  text: string,
-  images: { data: string; mimeType: string }[] = []
-): Content {
-  const parts: Part[] = [{ text }];
-  for (const img of images) {
-    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
-  }
-  return { role: "user", parts };
-}
-
-async function* streamAgent(
-  agent: LlmAgent,
-  appName: string,
-  prompt: string | Content
-): AsyncGenerator<string> {
-  const runner = makeRunner(agent, appName);
-  for await (const event of runner.runEphemeral({
-    userId: "system",
-    newMessage: buildMessage(prompt),
-  })) {
-    if (!event.content?.parts) continue;
-    for (const part of event.content.parts) {
-      if (typeof part.text === "string" && part.text) yield part.text;
-    }
-  }
-}
-
+/** Run a structured/text Agent once and return its raw text (JSON for
+ *  schema-bound agents). Images are attached as multimodal parts. */
 async function collectAgent(
-  agent: LlmAgent,
-  appName: string,
-  prompt: string | Content
+  agent: Agent,
+  prompt: string,
+  images: { data: string; mimeType: string }[] = []
 ): Promise<string> {
-  let result = "";
-  for await (const chunk of streamAgent(agent, appName, prompt)) result += chunk;
-  return result;
+  const { text } = await agent.chat(prompt, images);
+  return text;
 }
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 2, label = "task"): Promise<T> {
@@ -1015,7 +982,7 @@ async function runLintFixPass(
     const prompt = `${instruction}\n\nHTML to fix:\n${html}\n\nOutput ONLY the corrected, complete HTML starting with <!DOCTYPE html>. No markdown.`;
     let out = "";
     for await (const chunk of streamDesign(sysInstr, prompt, {
-      model: STREAMING_MODEL,
+      model: streamingModel(),
       temperature: 0.3,
       maxOutputTokens: 65536,
     })) {
@@ -1057,7 +1024,7 @@ async function streamScreen(
     let isFirstChunk = true;
     try {
       for await (let chunk of streamDesign(sysInstr, prompt, {
-        model: STREAMING_MODEL,
+        model: streamingModel(),
         temperature: 0.7,
         maxOutputTokens: opts?.maxTokens ?? 65536,
         image: opts?.image,
@@ -1088,7 +1055,7 @@ async function streamScreen(
   }
 
   if (!fullHtml.trim()) {
-    throw new Error(`Screen generation returned no HTML (model: ${STREAMING_MODEL})`);
+    throw new Error(`Screen generation returned no HTML (model: ${streamingModel()})`);
   }
 
   const { repaired, errors } = validateAndRepairHtml(fullHtml);
@@ -1177,12 +1144,8 @@ Decide the action: "create" if the user wants a brand new screen, or "edit" to m
 For "edit": choose the most appropriate screen id from the list, or use "ALL" if the change applies to every screen.
 For "create": set targetScreenId to "NEW" and provide a newScreenName.`;
 
-  const planMessage = parsedImages.length
-    ? multimodalMessage(planPromptText, parsedImages)
-    : planPromptText;
-
   const planRaw = await withRetry(
-    () => collectAgent(chatPlannerAgent, "wirefraime-plan", planMessage),
+    () => collectAgent(chatPlannerAgent(), planPromptText, parsedImages),
     2,
     "chat-plan"
   );
@@ -1268,15 +1231,11 @@ ${!isMultiScreen && selectedElement ? `\nTarget element: XPath="${selectedElemen
 Produce minimum patch operations.
 CRITICAL: Every search string MUST include a unique anchor attribute from the element — \`data-wf-id="..."\` (present on every element) or \`data-wf-name="..."\` — copied VERBATIM from the HTML above to guarantee a match. Prefer class-attribute swaps over full element rewrites.`;
 
-    const patchMessage = parsedImages.length
-      ? multimodalMessage(patchPromptText, parsedImages)
-      : patchPromptText;
-
     let patchSucceeded = false;
 
     try {
       const patchRaw = await withRetry(
-        () => collectAgent(patchAgent, "wirefraime-patch", patchMessage),
+        () => collectAgent(patchAgent(), patchPromptText, parsedImages),
         1,
         "patch-ops"
       );
@@ -1351,7 +1310,7 @@ Output the COMPLETE modified HTML. Preserve all unchanged parts exactly.`;
       let fullHtml = "";
       let isFirstChunk = true;
       for await (let chunk of streamDesign(editorInstr, editPromptText, {
-        model: STREAMING_MODEL,
+        model: streamingModel(),
         temperature: 0.4,
         maxOutputTokens: 24576,
         images: parsedImages,

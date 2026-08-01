@@ -91,7 +91,7 @@ function tokenizeLine(line: string): Token[] {
         }
 
         // Attribute name
-        let attrStart = i;
+        const attrStart = i;
         while (i < line.length && line[i] !== "=" && line[i] !== ">" && !/\s/.test(line[i]) && line[i] !== "/") i++;
         if (i > attrStart) {
           tokens.push({ type: "attr-name", text: line.slice(attrStart, i) });
@@ -127,7 +127,7 @@ function tokenizeLine(line: string): Token[] {
     }
 
     // Plain text
-    let textStart = i;
+    const textStart = i;
     while (i < line.length && line[i] !== "<") i++;
     if (i > textStart) {
       tokens.push({ type: "text", text: line.slice(textStart, i) });
@@ -153,11 +153,9 @@ export function CodeView({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
 
   const activeScreen = state.app.screens.find((s) => s.id === state.activeScreenId) ?? state.app.screens[0] ?? null;
+  const activeHtml = activeScreen?.html ?? "";
 
-  const formatted = useMemo(() => {
-    if (!activeScreen?.html) return "";
-    return prettyPrintHtml(activeScreen.html);
-  }, [activeScreen?.html]);
+  const formatted = useMemo(() => prettyPrintHtml(activeHtml), [activeHtml]);
 
   const lines = useMemo(() => formatted.split("\n"), [formatted]);
 
@@ -176,18 +174,18 @@ export function CodeView({ onClose }: { onClose: () => void }) {
 
   if (!activeScreen) {
     return (
-      <SoftSurface className="absolute inset-y-4 right-4 z-40 flex w-[calc(50%-1rem)] items-center justify-center rounded-xl">
+      <SoftSurface className="wf-studio-code absolute inset-y-3 right-3 z-40 flex w-[calc(50%-0.75rem)] items-center justify-center rounded-xl">
         <span className="text-sm text-muted-foreground">No screen selected</span>
       </SoftSurface>
     );
   }
 
   return (
-    <SoftSurface className="absolute inset-y-4 right-4 z-40 flex w-[calc(50%-1rem)] flex-col overflow-hidden rounded-xl animate-in slide-in-from-right-4 duration-200">
+    <SoftSurface className="wf-studio-code absolute inset-y-3 right-3 z-40 flex w-[calc(50%-0.75rem)] flex-col overflow-hidden rounded-xl animate-in slide-in-from-right-3 duration-150">
       {/* Header */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-foreground/8 px-5">
+      <div className="flex h-12 shrink-0 items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+          <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-ws-accent">
             Code
           </span>
           <span className="text-[12px] font-medium text-foreground/85">
@@ -202,7 +200,7 @@ export function CodeView({ onClose }: { onClose: () => void }) {
             variant="ghost"
             size="sm"
             onClick={handleCopy}
-            className="h-7 gap-1.5 rounded-full px-3 text-[11px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
+            className="h-7 gap-1.5 rounded-lg bg-foreground/[0.035] px-3 text-[11px] text-muted-foreground shadow-[var(--ws-raised)] hover:bg-foreground/[0.055] hover:text-foreground"
           >
             {copied ? (
               <>
@@ -224,7 +222,7 @@ export function CodeView({ onClose }: { onClose: () => void }) {
           <button
             onClick={onClose}
             aria-label="Close"
-            className="grid size-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+            className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
           >
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
               <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" />

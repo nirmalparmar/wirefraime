@@ -5,7 +5,7 @@ import { buildPlanPrompt, ScreenSpec } from "./prompts";
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
-/** What we ask MODEL_FAST for — a deliberately small theme surface;
+/** What we ask the "fast" role for — a deliberately small theme surface;
  * the rest of the token set is derived then clamped. */
 const PlanResponseSchema = z.object({
   appName: z.string().min(1).max(40),

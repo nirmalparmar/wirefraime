@@ -25,11 +25,11 @@ const SITE_URL =
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "AI Wireframe & UI Design Generator - Wirefraime",
+    default: "AI App Designer for Complete Product Flows | Wirefraime",
     template: "%s — Wirefraime",
   },
   description:
-    "Wirefraime is the AI wireframe tool that turns a prompt into a full UI design every screen, every state, every flow. Your AI UI designer use it do design landing page or full app screens and flow in seconds.",
+    "Turn a product idea into a complete, editable UI flow. Wirefraime designs connected app screens, states, a reusable design system, and exportable code—and includes a dedicated landing-page builder.",
   applicationName: "Wirefraime",
   keywords: [
     "wireframe",
@@ -46,27 +46,32 @@ export const metadata: Metadata = {
     "UI mockup generator",
     "AI design tool",
     "AI app design",
+    "AI landing page builder",
+    "landing page generator",
+    "AI website builder",
+    "landing page design",
     "design system generator",
     "Wirefraime",
   ],
   authors: [{ name: "Wirefraime" }],
   creator: "Wirefraime",
+  manifest: "/site.webmanifest",
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
-    title: "AI Wireframe & UI Design Generator - Wirefraime",
+    title: "AI App Designer for Complete Product Flows | Wirefraime",
     description:
-      "AI wireframe tool that turns a prompt into a full UI design. Generate wireframes, mockups, and every screen of your app in seconds.",
+      "Turn one product idea into a complete, editable UI flow with connected screens, states, a design system, and exportable code.",
     siteName: "Wirefraime",
     images: "/og.webp"
   },
   twitter: {
     card: "summary_large_image",
-    title: "Wirefraime - AI Wireframe & UI Design Tool",
+    title: "Wirefraime — AI App Designer for Complete Product Flows",
     images: "/og.webp",
     description:
-      "AI wireframe tool that turns a prompt into a full UI design. Wireframes, mockups, every screen — in seconds.",
+      "Turn one product idea into a complete, editable UI flow with connected screens, states, a design system, and exportable code.",
   },
   robots: { index: true, follow: true },
 };

@@ -59,33 +59,33 @@ function handleStepKey(
   return true;
 }
 
-/* ── Neumorphic shadow tokens ────────────────────────────── */
+/* ── Inspector surface tokens ────────────────────────────── */
 
-const SOFT_SHADOW = "shadow-[var(--ws-soft)]";
-const INSET_SOFT = "shadow-[var(--ws-inset)]";
-const RAISED_SOFT = "shadow-[var(--ws-raised)]";
+const SOFT_SHADOW = "shadow-[var(--ws-soft-lg)]";
+const INSET_SOFT = "border-0 shadow-[var(--ws-inset)]";
+const RAISED_SOFT = "border-0 bg-card shadow-[var(--ws-raised)]";
 
 /* ── Primitives ──────────────────────────────────────────── */
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground/40">
+    <div className="flex flex-col gap-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
         {label}
       </div>
-      <div className="space-y-2.5">{children}</div>
+      <div className="flex flex-col gap-2.5">{children}</div>
     </div>
   );
 }
 
 function Divider() {
-  return <div className="my-5 h-px bg-foreground/[0.05]" />;
+  return <div className="my-6 h-0" />;
 }
 
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="w-[52px] shrink-0 text-[13px] text-foreground/60">{label}</span>
+      <span className="w-[56px] shrink-0 text-[12px] text-muted-foreground">{label}</span>
       <div className="flex flex-1 items-center gap-2">{children}</div>
     </div>
   );
@@ -192,7 +192,7 @@ function EditableField({
           }
         }}
         placeholder={placeholder}
-        className={`h-8 w-full rounded-[10px] bg-foreground/[0.04] px-3 font-mono text-[12px] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:bg-foreground/[0.06] focus:ring-2 focus:ring-ws-accent/40 ${INSET_SOFT}`}
+        className={`h-9 w-full rounded-[11px] bg-foreground/[0.035] px-3 font-mono text-[11px] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:border-ws-accent/50 focus:bg-background focus:ring-2 focus:ring-ws-accent/10 ${INSET_SOFT}`}
       />
     </FieldRow>
   );
@@ -217,7 +217,7 @@ function SelectField({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`h-8 w-full cursor-pointer rounded-[10px] bg-foreground/[0.04] px-3 text-[13px] text-foreground/85 outline-none transition focus:bg-foreground/[0.06] focus:ring-2 focus:ring-ws-accent/40 ${INSET_SOFT}`}
+        className={`h-9 w-full cursor-pointer rounded-[11px] bg-foreground/[0.035] px-3 text-[12px] text-foreground/85 outline-none transition focus:border-ws-accent/50 focus:bg-background focus:ring-2 focus:ring-ws-accent/10 ${INSET_SOFT}`}
       >
         {!known && value && <option value={value}>{value}</option>}
         {options.map((o) => (
@@ -241,14 +241,14 @@ function AlignButtons({
   const active = value === "start" || value === "" ? "left" : value;
   return (
     <FieldRow label="Align">
-      <div className={`flex flex-1 items-center gap-0.5 rounded-xl bg-foreground/[0.04] p-0.5 ${INSET_SOFT}`}>
+      <div className={`flex flex-1 items-center gap-0.5 rounded-xl bg-foreground/[0.035] p-0.5 ${INSET_SOFT}`}>
         {options.map((o) => (
           <button
             key={o}
             type="button"
             onClick={() => onChange(o)}
             title={o}
-            className={`grid h-7 flex-1 place-items-center rounded-lg transition ${
+            className={`grid h-7 flex-1 place-items-center rounded-[9px] transition ${
               active === o
                 ? `bg-card text-foreground ${RAISED_SOFT}`
                 : "text-muted-foreground hover:text-foreground/80"
@@ -405,7 +405,7 @@ function MiniInput({
         }
       }}
       placeholder={placeholder}
-      className={`h-7 w-full rounded-lg bg-foreground/[0.04] px-2 text-center font-mono text-[11px] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:bg-foreground/[0.06] focus:ring-2 focus:ring-ws-accent/40 ${INSET_SOFT}`}
+      className={`h-8 w-full rounded-[10px] bg-foreground/[0.035] px-2 text-center font-mono text-[10px] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:border-ws-accent/50 focus:bg-background focus:ring-2 focus:ring-ws-accent/10 ${INSET_SOFT}`}
     />
   );
 }
@@ -517,7 +517,7 @@ function TextContentEditor({
             commit();
           }
         }}
-        className={`h-16 w-full resize-none rounded-[10px] bg-foreground/[0.04] px-3 py-2.5 text-[13px] leading-[1.6] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:bg-foreground/[0.06] focus:ring-2 focus:ring-ws-accent/40 ${INSET_SOFT}`}
+        className={`h-20 w-full resize-none rounded-xl bg-foreground/[0.035] px-3 py-2.5 text-[12px] leading-[1.55] text-foreground/85 outline-none transition placeholder:text-muted-foreground/40 focus:border-ws-accent/50 focus:bg-background focus:ring-2 focus:ring-ws-accent/10 ${INSET_SOFT}`}
         placeholder="Text content..."
       />
     </Section>
@@ -530,7 +530,7 @@ function SelectionChip({ tag, className }: { tag: string; className?: string }) 
   const firstClass = className?.split(/\s+/).filter(Boolean)[0];
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-full bg-foreground/[0.04] px-2.5 py-1 ${INSET_SOFT}`}
+      className="flex items-center gap-1.5 rounded-full bg-foreground/[0.035] px-3 py-1.5 shadow-[var(--ws-inset)]"
     >
       <span className="size-1.5 rounded-full bg-ws-accent" />
       <span className="font-mono text-[11px] text-foreground/80">&lt;{tag}&gt;</span>
@@ -719,13 +719,16 @@ export function PropertyPanel({
 
   return (
     <SoftSurface
-      className={`absolute right-4 top-4 z-20 flex max-h-[calc(100%-32px)] w-[280px] flex-col overflow-hidden rounded-2xl ${SOFT_SHADOW} animate-in slide-in-from-right-4 duration-200`}
+      className={`wf-studio-inspector absolute right-4 top-4 z-20 flex max-h-[calc(100%-32px)] w-[320px] flex-col overflow-hidden rounded-[20px] ${SOFT_SHADOW} animate-in slide-in-from-right-3 duration-150`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3">
-        <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
-          Properties
-        </span>
+      <div className="flex items-center justify-between px-4 pb-2 pt-4">
+        <div className="flex items-center gap-2">
+          <span className="size-1.5 rounded-full bg-ws-accent" />
+          <span className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
+            Properties
+          </span>
+        </div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -734,7 +737,7 @@ export function PropertyPanel({
             }}
             aria-label="Select parent element"
             title="Select parent (Shift + ↑)"
-            className={`grid size-7 place-items-center rounded-full text-muted-foreground/70 transition hover:text-foreground ${RAISED_SOFT}`}
+            className={`grid size-8 place-items-center rounded-full text-muted-foreground/70 transition hover:border-foreground/20 hover:text-foreground ${RAISED_SOFT}`}
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 9V3M3 6l3-3 3 3" />
@@ -744,7 +747,7 @@ export function PropertyPanel({
             type="button"
             onClick={() => dispatch({ type: "SELECT_ELEMENT", element: null })}
             aria-label="Close panel"
-            className={`grid size-7 place-items-center rounded-full text-muted-foreground/70 transition hover:text-foreground ${RAISED_SOFT}`}
+            className={`grid size-8 place-items-center rounded-full text-muted-foreground/70 transition hover:border-foreground/20 hover:text-foreground ${RAISED_SOFT}`}
           >
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
               <path d="M3 3l6 6M9 3l-6 6" />
@@ -754,12 +757,12 @@ export function PropertyPanel({
       </div>
 
       {/* Selection summary */}
-      <div className="px-4 pb-2.5">
+      <div className="px-4 pb-3 pt-3">
         <SelectionChip tag={selectedElement.tagName} className={selectedElement.className} />
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-none px-4 pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-none px-4 pb-4 pt-4">
         {isTextNode && (
           <>
             <TextContentEditor textContent={selectedElement.textContent} onCommit={applyTextContent} />

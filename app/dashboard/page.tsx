@@ -3,21 +3,51 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { WireframeApp } from "@/lib/types";
-import { SANS, SERIF } from "@/lib/constants";
-
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+  Plus,
+  Home,
+  LayoutGrid,
+  Paperclip,
+  SlidersHorizontal,
+  ArrowUp,
+  LayoutTemplate,
+  MoreHorizontal,
+  ArrowRight,
+  Copy,
+  Trash2,
+  Sparkles,
+  X,
+  CircleAlert,
+  ImagePlus,
+  Loader2,
+  Clock,
+  Smartphone,
+  Monitor,
+  Rocket,
+} from "lucide-react";
+import type { WireframeApp } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { NavAuthActions } from "@/components/landing/nav-auth-actions";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarTrigger,
+  SidebarInset,
+  SidebarRail,
+} from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,30 +55,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
-import { NavAuthActions } from "@/components/landing/nav-auth-actions";
 
 /* ── Helpers ── */
-
-/* Pastel preview palettes — same set the landing gallery cards use. */
-const PALETTES = [
-  { from: "#e8f0fe", to: "#c2d8ff", accent: "#3366cc", soft: "#c2d0ff" },
-  { from: "#fde8e8", to: "#ffc9c9", accent: "#e05050", soft: "#ffd6d6" },
-  { from: "#e8fdf0", to: "#b9f0ce", accent: "#2f9e5b", soft: "#c8f0d6" },
-  { from: "#fef9e8", to: "#fde9a0", accent: "#d99a1f", soft: "#fbeec0" },
-  { from: "#f3e8fe", to: "#ddb9f5", accent: "#8a4fd3", soft: "#e9d4fa" },
-  { from: "#e8f8fe", to: "#b2e6fb", accent: "#2391c9", soft: "#cdeefb" },
-];
-
-function hashName(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
-function paletteForApp(name: string) {
-  return PALETTES[hashName(name) % PALETTES.length];
-}
 
 function relativeDate(ts: number): string {
   const diff = Date.now() - ts;
@@ -61,8 +69,44 @@ function relativeDate(ts: number): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-const DESC_LIMIT = 280;
 const MAX_REF_DIM = 1024;
+const MAX_REF_BYTES = 15 * 1024 * 1024; // 15MB source cap
+
+/* Pull the first image out of a paste/drop payload (files first, then items). */
+function firstImageFile(
+  files?: FileList | null,
+  items?: DataTransferItemList | null
+): File | null {
+  if (files) {
+    for (const f of Array.from(files)) {
+      if (f.type.startsWith("image/")) return f;
+    }
+  }
+  if (items) {
+    for (const it of Array.from(items)) {
+      if (it.kind === "file" && it.type.startsWith("image/")) {
+        const f = it.getAsFile();
+        if (f) return f;
+      }
+    }
+  }
+  return null;
+}
+
+/* True when a drag payload carries files (vs. text/selection). */
+function dragHasFiles(dt: DataTransfer | null): boolean {
+  return !!dt && Array.from(dt.types).includes("Files");
+}
+
+/* Turn a free-text prompt into a short project name. */
+function deriveName(prompt: string): string {
+  const clean = prompt.trim().replace(/\s+/g, " ");
+  if (!clean) return "Untitled project";
+  const firstChunk = clean.split(/[.!?\n]/)[0].trim() || clean;
+  let name = firstChunk.split(" ").slice(0, 6).join(" ");
+  if (name.length > 48) name = name.slice(0, 48).trim();
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
 
 /* Resize an image file to a capped data URL (PNG). */
 function resizeImageFile(file: File): Promise<string> {
@@ -91,66 +135,35 @@ function resizeImageFile(file: File): Promise<string> {
   });
 }
 
-/* ── Mini screen preview (landing gallery style) ── */
-function ProjectPreview({ palette }: { palette: (typeof PALETTES)[number] }) {
-  return (
-    <div className="proj-mini">
-      <div className="proj-mini-bar">
-        <i style={{ background: `${palette.accent}55` }} />
-        <i />
-        <i />
-      </div>
-      <div className="proj-mini-body">
-        <div className="proj-mini-row sm" style={{ background: palette.soft }} />
-        <div className="proj-mini-row xs" />
-        <div className="proj-mini-cards">
-          <div className="proj-mini-card" />
-          <div className="proj-mini-card" />
-          <div className="proj-mini-card" style={{ background: `${palette.accent}14`, borderColor: `${palette.accent}26` }} />
-        </div>
-        <div className="proj-mini-row" />
-        <div className="proj-mini-row sm" />
-      </div>
-    </div>
-  );
-}
+/* Starter prompts that populate the composer. */
+const STARTERS = [
+  { icon: Smartphone, label: "Mobile app", prompt: "A mobile fitness tracking app with an onboarding flow, home dashboard, and workout detail screens" },
+  { icon: Monitor, label: "SaaS dashboard", prompt: "An analytics SaaS dashboard with a sidebar, KPI cards, charts, and a data table" },
+  { icon: Rocket, label: "Landing page", prompt: "A modern landing page for an AI startup with a hero, features, pricing, and FAQ" },
+];
 
-/* ── Three-dot menu icon ── */
-function MoreIcon() {
+/* ── Neutral, layered project thumbnail (shared tokens only) ── */
+function ProjectPreview() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <circle cx="8" cy="3.5" r="1.25" />
-      <circle cx="8" cy="8" r="1.25" />
-      <circle cx="8" cy="12.5" r="1.25" />
-    </svg>
-  );
-}
-
-/* ── Empty state illustration ── */
-function EmptyIllustration() {
-  return (
-    <div className="empty-art">
-      <div className="empty-art-bg" />
-      <div className="empty-window">
-        <div className="proj-mini-bar">
-          <i style={{ background: "#3366cc55" }} />
-          <i />
-          <i />
+    <div className="relative h-full w-full overflow-hidden bg-gradient-to-b from-muted/40 to-muted">
+      {/* floating browser mock, lifted off the panel */}
+      <div className="absolute inset-x-6 top-6 bottom-0 overflow-hidden rounded-t-xl bg-card shadow-[0_12px_30px_-14px_rgba(0,0,0,0.28)] ring-1 ring-black/[0.05] transition-transform duration-300 ease-out group-hover:-translate-y-1">
+        <div className="flex h-6 items-center gap-1.5 border-b border-border/60 bg-muted/40 px-3">
+          <span className="size-1.5 rounded-full bg-foreground/15" />
+          <span className="size-1.5 rounded-full bg-foreground/10" />
+          <span className="size-1.5 rounded-full bg-foreground/10" />
         </div>
-        <div className="proj-mini-body">
-          <div className="proj-mini-row sm" style={{ background: "#c2d0ff" }} />
-          <div className="proj-mini-row xs" />
-          <div className="proj-mini-cards">
-            <div className="proj-mini-card" />
-            <div className="proj-mini-card" />
+        <div className="flex flex-col gap-2 p-3.5">
+          <div className="h-2 w-3/5 rounded bg-foreground/12" />
+          <div className="h-1.5 w-2/5 rounded bg-foreground/[0.07]" />
+          <div className="mt-1 flex gap-2">
+            <div className="h-11 flex-1 rounded-md bg-muted" />
+            <div className="h-11 flex-1 rounded-md bg-muted" />
+            <div className="h-11 flex-1 rounded-md bg-primary/[0.08] ring-1 ring-primary/15" />
           </div>
-          <div className="proj-mini-row" />
+          <div className="h-2 w-full rounded bg-foreground/[0.07]" />
+          <div className="h-2 w-4/5 rounded bg-foreground/[0.07]" />
         </div>
-      </div>
-      <div className="empty-plus">
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-          <path d="M8 3v10M3 8h10" />
-        </svg>
       </div>
     </div>
   );
@@ -161,17 +174,22 @@ function EmptyIllustration() {
 export default function Dashboard() {
   const router = useRouter();
   const [apps, setApps] = useState<WireframeApp[]>([]);
-  const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  const [prompt, setPrompt] = useState("");
+  const [wireframe, setWireframe] = useState(false);
   const [refImage, setRefImage] = useState<string | null>(null);
   const [brands, setBrands] = useState<Array<{ id: string; name: string; category: string; description: string }>>([]);
   const [brandId, setBrandId] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+
   const refFileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dragDepthRef = useRef(0);
 
   useEffect(() => {
     async function load() {
@@ -179,7 +197,6 @@ export default function Dashboard() {
         const res = await fetch("/api/projects");
         if (res.ok) {
           const rows = await res.json();
-          // Map DB rows to WireframeApp shape for UI
           const mapped: WireframeApp[] = rows.map((r: Record<string, unknown>) => ({
             id: r.id as string,
             name: r.name as string,
@@ -222,21 +239,46 @@ export default function Dashboard() {
   useEffect(() => {
     const pending = sessionStorage.getItem("wirefraime-landing-prompt");
     if (pending && pending.trim()) {
-      setDescription(pending.trim());
-      setShowCreate(true);
+      setPrompt(pending.trim());
       sessionStorage.removeItem("wirefraime-landing-prompt");
+      requestAnimationFrame(() => textareaRef.current?.focus());
     }
   }, []);
 
-  async function handleCreate() {
-    if (!name.trim() || !description.trim()) return;
+  // Guard: dropping a file anywhere outside the composer would otherwise make
+  // the browser navigate to it and blow away the app. Swallow those drops.
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (dragHasFiles(e.dataTransfer)) e.preventDefault();
+    };
+    window.addEventListener("dragover", guard);
+    window.addEventListener("drop", guard);
+    return () => {
+      window.removeEventListener("dragover", guard);
+      window.removeEventListener("drop", guard);
+    };
+  }, []);
+
+  function focusPrompt() {
+    textareaRef.current?.focus();
+    textareaRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  async function handleGenerate() {
+    const p = prompt.trim();
+    if (!p || isCreating) return;
     setIsCreating(true);
     setQuotaError(null);
+
+    const description = wireframe
+      ? `Generate this as clean low-fidelity wireframes — grayscale layout blocks, placeholder text, no imagery. App: ${p}`
+      : p;
+
     try {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: description.trim(), designSystemId: brandId }),
+        body: JSON.stringify({ name: deriveName(p), description, designSystemId: brandId }),
       });
       if (res.ok) {
         const row = await res.json();
@@ -296,379 +338,429 @@ export default function Dashboard() {
     }
   }
 
-  function openCreate() {
-    setName("");
-    setDescription("");
-    setRefImage(null);
-    setBrandId(null);
-    setShowCreate(true);
+  /* Validate + resize a single image into the reference slot. Shared by the
+     file picker, paste, and drag-and-drop paths. */
+  async function ingestImageFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setAttachError("That file isn't an image. Use a PNG, JPG, or WebP.");
+      return;
+    }
+    if (file.size > MAX_REF_BYTES) {
+      setAttachError("That image is too large — 15MB max.");
+      return;
+    }
+    setAttachError(null);
+    try {
+      setRefImage(await resizeImageFile(file));
+    } catch {
+      setAttachError("Couldn't read that image. Try a different file.");
+    }
   }
 
-  async function handleRefImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    try { setRefImage(await resizeImageFile(file)); } catch { /* ignore */ }
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const file = firstImageFile(e.clipboardData?.files, e.clipboardData?.items);
+    if (file) {
+      e.preventDefault(); // don't also paste the filename as text
+      void ingestImageFile(file);
+    }
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    dragDepthRef.current -= 1;
+    if (dragDepthRef.current <= 0) {
+      dragDepthRef.current = 0;
+      setIsDragging(false);
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    if (!dragHasFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+    const file = firstImageFile(e.dataTransfer.files, e.dataTransfer.items);
+    if (file) void ingestImageFile(file);
   }
 
   const sortedApps = [...apps].sort((a, b) => b.updatedAt - a.updatedAt);
+  const currentBrand = brandId ? brands.find((b) => b.id === brandId) : null;
 
   return (
-    <div className="wf-dash">
-      <div className="dash-bg" aria-hidden="true" />
+    <TooltipProvider delayDuration={0}>
+      <SidebarProvider>
+        {/* ── Sidebar (shadcn, collapsible to an icon rail) ── */}
+        <Sidebar collapsible="icon">
+          <SidebarHeader>
+            <div className="flex items-center justify-between gap-2 px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+              <Link
+                href="/"
+                className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:hidden"
+              >
+                <img src="/logo.svg" alt="" width={24} height={24} className="shrink-0" />
+                <span className="font-serif text-xl italic tracking-tight text-sidebar-foreground">
+                  WireFraime
+                </span>
+              </Link>
+              <SidebarTrigger className="text-muted-foreground" />
+            </div>
+          </SidebarHeader>
 
-      {/* ── Nav ── */}
-      <nav>
-        <Link href="/" className="nav-logo">
-          <img src="/logo.svg" alt="" width={24} height={24} style={{ display: "inline-block", verticalAlign: "middle", marginRight: 8 }} />
-          WireFraime
-        </Link>
-        <div className="nav-right">
-          <Link href="/dashboard" className="nav-link active">Projects</Link>
-          <Link href="/dashboard/billing" className="nav-link">Billing</Link>
-          <button className="pill-btn" onClick={openCreate} type="button">
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-            New project
-          </button>
-          <NavAuthActions variant="app" />
-        </div>
-      </nav>
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton variant="outline" tooltip="New design" onClick={focusPrompt}>
+                    <Plus />
+                    <span>New design</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton isActive tooltip="Home" onClick={focusPrompt}>
+                    <Home />
+                    <span>Home</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Projects">
+                    <a href="#recents">
+                      <LayoutGrid />
+                      <span>Projects</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
 
-      {/* ── Content ── */}
-      <main className="dash-main">
-        <header className={`dash-header${mounted ? " vis" : ""}`}>
-          <div>
-            <p className="dash-label">Your workspace</p>
-            <h1 className="dash-title">
-              Projects
+            {/* Usage card — hidden in the collapsed icon rail */}
+            <SidebarGroup className="mt-auto group-data-[collapsible=icon]:hidden">
+              <Card className="gap-2 rounded-xl bg-sidebar-accent/50 p-3.5 shadow-none ring-0">
+                <div className="flex items-center gap-2 text-[13px] font-medium text-sidebar-foreground">
+                  <Sparkles className="size-4 text-muted-foreground" />
+                  {sortedApps.length} project{sortedApps.length !== 1 ? "s" : ""}
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Describe an idea and generate a full, editable flow in seconds.
+                </p>
+              </Card>
+            </SidebarGroup>
+          </SidebarContent>
+
+          <SidebarFooter>
+            <div className="flex items-center gap-2.5 overflow-hidden px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+              <NavAuthActions variant="app" />
+              <span className="truncate text-[13px] font-medium text-muted-foreground group-data-[collapsible=icon]:hidden">
+                Account
+              </span>
+            </div>
+          </SidebarFooter>
+
+          <SidebarRail />
+        </Sidebar>
+
+        {/* ── Content ── */}
+        <SidebarInset>
+          {/* Mobile top bar — carries the sidebar toggle on small screens */}
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border bg-background/80 px-4 backdrop-blur-xl md:hidden">
+            <SidebarTrigger className="text-muted-foreground" />
+            <Link href="/" className="flex items-center gap-2">
+              <img src="/logo.svg" alt="" width={20} height={20} className="block" />
+              <span className="font-serif text-lg italic tracking-tight">WireFraime</span>
+            </Link>
+            <div className="ml-auto">
+              <NavAuthActions variant="app" />
+            </div>
+          </header>
+
+          {/* Subtle ambient depth behind the hero */}
+          <div className="relative">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(60%_100%_at_50%_0%,color-mix(in_oklch,var(--foreground)_5%,transparent),transparent)]"
+            />
+
+          {/* Hero prompt */}
+          <section
+            className={cn(
+              "relative mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-3xl flex-col items-center justify-center px-6 py-16 text-center transition-all duration-500 ease-out md:min-h-[86vh]",
+              mounted ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+            )}
+          >
+            <Badge variant="secondary" className="mb-5 gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
+              <Sparkles className="text-foreground/60" />
+              AI product designer
+            </Badge>
+
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+              What should we design?
             </h1>
-            <p className="dash-sub">
-              {apps.length === 0
-                ? "Create your first project to get started"
-                : `${apps.length} project${apps.length !== 1 ? "s" : ""} · Last updated ${relativeDate(sortedApps[0]?.updatedAt ?? Date.now())}`}
+            <p className="mt-3.5 max-w-md text-[15px] text-muted-foreground">
+              Describe a screen, a flow, or a whole product — we&apos;ll draft an editable design and code.
             </p>
-          </div>
-        </header>
 
-        {/* ── Empty state ── */}
-        {!loading && apps.length === 0 && (
-          <div className="dash-empty">
-            <EmptyIllustration />
-            <p className="empty-title">
-              Start your <em>first</em> project
-            </p>
-            <p className="empty-sub">
-              Describe your app and AI will generate the full design — screens, components, and a complete design system.
-            </p>
-            <button className="pill-btn lg" onClick={openCreate} type="button">
-              Create with AI
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {/* ── Project grid ── */}
-        {apps.length > 0 && (
-          <div className="proj-grid text-foreground">
-            {/* New project card */}
-            <button className="proj-new" onClick={openCreate} type="button">
-              <div className="proj-new-icon">
-                <svg width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                  <path d="M8 3v10M3 8h10" />
-                </svg>
-              </div>
-              <span>New project</span>
-            </button>
-
-            {/* Project cards */}
-            {sortedApps.map((app, i) => {
-              const screenCount = app.screens?.length ?? 0;
-              const palette = paletteForApp(app.name);
-              const platform = (app as WireframeApp).platform ?? "web";
-
-              return (
-                <article
-                  className="proj-card"
-                  key={app.id}
-                  style={{ animationDelay: `${Math.min(i + 1, 10) * 0.05}s` }}
-                >
-                  {/* Preview */}
-                  <div
-                    className="proj-preview"
-                    style={{ background: `linear-gradient(135deg, ${palette.from} 0%, ${palette.to} 100%)` }}
-                    onClick={() => router.push(`/workspace/${app.id}`)}
-                  >
-                    <ProjectPreview palette={palette} />
-                    {screenCount > 0 && (
-                      <span className="proj-count">
-                        {screenCount} screen{screenCount !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    <div className="proj-open">
-                      <span className="pill-btn sm">
-                        Open project
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
-                        </svg>
-                      </span>
-                    </div>
+            {/* Prompt composer — the lifted centerpiece */}
+            <Card
+              className="relative mt-8 w-full gap-0 rounded-2xl p-0 text-left ring-1 ring-black/[0.06] shadow-[var(--shadow-card)] transition-shadow duration-300 focus-within:shadow-[var(--ws-soft-lg)]"
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              {isDragging && (
+                <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-2xl border-2 border-dashed border-primary/40 bg-background/85 backdrop-blur-sm">
+                  <div className="flex flex-col items-center gap-2 text-sm font-medium text-foreground">
+                    <ImagePlus className="size-6 text-muted-foreground" />
+                    Drop image to attach
                   </div>
+                </div>
+              )}
 
-                  {/* Info */}
-                  <div className="proj-info">
-                    <div className="proj-info-top">
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <p className="proj-title" onClick={() => router.push(`/workspace/${app.id}`)}>
-                          {app.name}
+              <Textarea
+                ref={textareaRef}
+                placeholder="Describe the design you need…"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onPaste={handlePaste}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleGenerate();
+                  }
+                }}
+                rows={3}
+                className="min-h-[104px] resize-none rounded-none border-0 bg-transparent px-5 pt-5 pb-2 text-base shadow-none focus-visible:ring-0 md:text-base"
+              />
+
+              {refImage && (
+                <div className="mx-4 mb-1 flex items-center gap-2.5 rounded-xl bg-muted/60 p-2 pr-2.5">
+                  <img src={refImage} alt="Reference" className="size-9 rounded-lg object-cover" />
+                  <span className="flex-1 text-xs text-muted-foreground">Reference attached</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-md text-muted-foreground"
+                    onClick={() => { setRefImage(null); setAttachError(null); }}
+                    aria-label="Remove reference"
+                  >
+                    <X />
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 p-3">
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1.5 rounded-full px-3 text-muted-foreground"
+                    onClick={() => refFileInputRef.current?.click()}
+                    title="Attach a reference image — or paste / drop one onto the box"
+                  >
+                    <Paperclip className="size-4" />
+                    Add
+                  </Button>
+
+                  {brands.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 rounded-full px-3 text-muted-foreground">
+                          <SlidersHorizontal className="size-4" />
+                          {currentBrand ? currentBrand.name : "Custom AI"}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="min-w-[200px]">
+                        <DropdownMenuItem onClick={() => setBrandId(null)}>Custom (AI)</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {brands.map((b) => (
+                          <DropdownMenuItem key={b.id} onClick={() => setBrandId(b.id)} title={b.description}>
+                            {b.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+
+                <Button
+                  variant="primary"
+                  className="h-9 gap-1.5 rounded-xl px-4 text-[13px]"
+                  onClick={handleGenerate}
+                  disabled={isCreating || !prompt.trim()}
+                >
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Generating
+                    </>
+                  ) : (
+                    <>
+                      Generate
+                      <ArrowUp className="size-4" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </Card>
+
+            {attachError && (
+              <p className="mt-2.5 flex items-center gap-1.5 text-xs text-destructive">
+                <CircleAlert className="size-3.5 shrink-0" />
+                {attachError}
+              </p>
+            )}
+
+            {/* Toggle + starter chips */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant={wireframe ? "primary" : "outline"}
+                size="sm"
+                className="h-8 gap-1.5 rounded-full px-3.5"
+                onClick={() => setWireframe((v) => !v)}
+                aria-pressed={wireframe}
+              >
+                <LayoutTemplate className="size-4" />
+                Wireframe
+              </Button>
+
+              <Separator orientation="vertical" className="mx-1 !h-5 self-center" />
+
+              {STARTERS.map((s) => (
+                <Button
+                  key={s.label}
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-full px-3.5 text-muted-foreground"
+                  onClick={() => {
+                    setPrompt(s.prompt);
+                    focusPrompt();
+                  }}
+                >
+                  <s.icon className="size-4" />
+                  {s.label}
+                </Button>
+              ))}
+            </div>
+
+            {quotaError && (
+              <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-destructive/10 px-4 py-2 text-[13px] text-destructive">
+                <CircleAlert className="size-4 shrink-0" />
+                <span>{quotaError}</span>
+                <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">
+                  View plans
+                </Link>
+              </div>
+            )}
+
+            <input
+              ref={refFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void ingestImageFile(f);
+                e.target.value = "";
+              }}
+            />
+          </section>
+        </div>
+
+        {/* Recents */}
+        {!loading && sortedApps.length > 0 && (
+          <section className="mx-auto max-w-6xl scroll-mt-6 px-6 pb-24" id="recents">
+            <div className="mb-6 flex items-center gap-3">
+              <h2 className="text-xl font-semibold tracking-tight text-foreground">Recents</h2>
+              <Badge variant="secondary" className="rounded-full">{sortedApps.length}</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {sortedApps.map((app, i) => {
+                const screenCount = app.screens?.length ?? 0;
+                return (
+                  <Card
+                    key={app.id}
+                    className="wf-rise group relative gap-0 overflow-hidden rounded-xl py-0 ring-1 ring-black/[0.06] shadow-[var(--ws-soft)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--ws-soft-lg)]"
+                    style={{ animationDelay: `${Math.min(i, 9) * 0.04}s` }}
+                  >
+                    <button
+                      type="button"
+                      className="relative block h-44 w-full overflow-hidden text-left"
+                      onClick={() => router.push(`/workspace/${app.id}`)}
+                      aria-label={`Open ${app.name}`}
+                    >
+                      <ProjectPreview />
+                      {screenCount > 0 && (
+                        <Badge
+                          variant="secondary"
+                          className="absolute right-2.5 top-2.5 rounded-full bg-card/85 shadow-sm backdrop-blur-sm"
+                        >
+                          {screenCount} screen{screenCount !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
+                    </button>
+
+                    <div className="flex items-center gap-2 border-t border-border/70 px-3.5 py-2.5">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => router.push(`/workspace/${app.id}`)}
+                      >
+                        <p className="truncate text-sm font-medium text-foreground">{app.name}</p>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="size-3" />
+                          Edited {relativeDate(app.updatedAt)}
                         </p>
-                        <p className="proj-desc">{app.description}</p>
-                      </div>
+                      </button>
 
-                      {/* Context menu */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="proj-menu-btn" aria-label="Project actions">
-                            <MoreIcon />
-                          </button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 focus-visible:opacity-100"
+                            aria-label="Project actions"
+                          >
+                            <MoreHorizontal />
+                          </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="wf-dash-pop min-w-[160px]">
+                        <DropdownMenuContent align="end" className="min-w-[160px]">
                           <DropdownMenuItem onClick={() => router.push(`/workspace/${app.id}`)}>
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
-                            </svg>
+                            <ArrowRight />
                             Open
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleDuplicate(app)}>
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                              <rect x="5.5" y="5.5" width="7.5" height="7.5" rx="1.5" />
-                              <path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
-                            </svg>
+                            <Copy />
                             Duplicate
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => handleDelete(app.id)}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5" />
-                              <path d="M4.5 4.5l.5 8.5a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1l.5-8.5" />
-                            </svg>
+                          <DropdownMenuItem variant="destructive" onClick={() => handleDelete(app.id)}>
+                            <Trash2 />
                             Delete
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-
-                    {/* Meta row */}
-                    <div className="proj-meta">
-                      <span className="proj-tag">{platform}</span>
-                      <span className="proj-date">{relativeDate(app.updatedAt)}</span>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
         )}
-      </main>
-
-      {/* ── Create dialog ── */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="wf-dash-dialog sm:max-w-[520px]" style={{ fontFamily: SANS }}>
-          <DialogHeader>
-            <DialogTitle
-              className="text-[22px] text-foreground tracking-tight"
-              style={{ fontFamily: SERIF }}
-            >
-              New project
-            </DialogTitle>
-            <DialogDescription className="text-[14px] leading-relaxed">
-              Describe your app and AI will generate the full design system and all screens.
-            </DialogDescription>
-          </DialogHeader>
-
-          <Separator className="my-1" />
-
-          <div className="space-y-5 py-2">
-            <div className="space-y-2">
-              <Label
-                htmlFor="app-name"
-                className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-              >
-                Project name
-              </Label>
-              <Input
-                id="app-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. CRM Dashboard, Mobile Banking App"
-                autoFocus
-                className="h-10 text-sm text-foreground font-bold"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label
-                  htmlFor="app-description"
-                  className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-                >
-                  Description
-                </Label>
-                {description.length > 0 && (
-                  <span
-                    className="text-[11px] tabular-nums text-muted-foreground"
-                    style={{ color: description.length > DESC_LIMIT ? "var(--destructive)" : undefined }}
-                  >
-                    {description.length}/{DESC_LIMIT}
-                  </span>
-                )}
-              </div>
-              <Textarea
-                id="app-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value.slice(0, DESC_LIMIT))}
-                placeholder="Describe your app, its users, and the core flows. More detail = better results."
-                rows={4}
-                className="resize-none text-sm text-foreground leading-relaxed"
-              />
-            </div>
-
-            {/* Brand design system */}
-            <div className="space-y-2">
-              <Label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Design system <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— optional</span>
-              </Label>
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setBrandId(null)}
-                  className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${brandId === null ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground"}`}
-                >
-                  Custom (AI)
-                </button>
-                {brands.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => setBrandId(b.id)}
-                    title={b.description}
-                    className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors ${brandId === b.id ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-foreground/25 hover:text-foreground"}`}
-                  >
-                    {b.name}
-                  </button>
-                ))}
-              </div>
-              <p className="min-h-[15px] text-[11px] leading-relaxed text-muted-foreground">
-                {brandId
-                  ? brands.find((b) => b.id === brandId)?.description
-                  : "AI designs a bespoke look for your app."}
-              </p>
-            </div>
-
-            {/* Reference image */}
-            <div className="space-y-2">
-              <Label className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Reference image <span className="font-normal normal-case tracking-normal text-muted-foreground/60">— optional</span>
-              </Label>
-
-              <input
-                ref={refFileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleRefImageFile(f);
-                  e.target.value = "";
-                }}
-              />
-
-              {refImage ? (
-                <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 p-2.5">
-                  <img src={refImage} alt="Reference" className="size-14 shrink-0 rounded-lg border border-border object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-foreground">Reference attached</p>
-                    <p className="text-[11px] text-muted-foreground">AI will match this style &amp; layout.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setRefImage(null)}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
-                    aria-label="Remove reference image"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => refFileInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-3.5 text-[13px] font-medium text-muted-foreground transition-colors hover:border-foreground/25 hover:bg-muted/50 hover:text-foreground"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="3" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <path d="M21 15l-5-5L5 21" />
-                  </svg>
-                  Upload a screenshot or mockup
-                </button>
-              )}
-            </div>
-          </div>
-
-          {quotaError && (
-            <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0 text-destructive">
-                <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-              <div className="flex-1 text-sm">
-                <p className="font-medium text-destructive">{quotaError}</p>
-                <Link
-                  href="/dashboard/billing"
-                  className="mt-1 inline-block text-xs font-medium text-primary underline underline-offset-2 hover:no-underline"
-                >
-                  View plans &amp; upgrade
-                </Link>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 pt-2">
-            <Button
-              variant="ghost"
-              onClick={() => { setShowCreate(false); setQuotaError(null); }}
-              className="text-muted-foreground"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={isCreating || !name.trim() || !description.trim()}
-              variant="clay"
-              className="gap-1.5 px-5 disabled:opacity-40"
-            >
-              {isCreating ? (
-                <>
-                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  Generate app
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3.5 8h9M9 4.5L12.5 8 9 11.5" />
-                  </svg>
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

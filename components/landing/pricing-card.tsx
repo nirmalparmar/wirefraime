@@ -1,84 +1,95 @@
-/**
- * PricingCard — reusable pricing tier card in the landing ("wf-landing") theme.
- *
- * Presentational only. Styling lives in app/globals.css under `.wf-landing`
- * (`.price-card`, `.price-card.featured`, `.price-*`), so this MUST render
- * inside the `.wf-landing` root to inherit the theme.
- */
+import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export interface PricingTier {
-  /** Plan name, shown as an uppercase eyebrow. */
+export type PricingCardPlan = {
+  id: string;
   name: string;
-  /** One-line description under the name. */
-  tagline: string;
-  /** Pre-formatted price, e.g. "$20" or "Free". */
+  tagline?: string;
   price: string;
-  /** Optional unit shown next to the price, e.g. "/ mo". */
-  period?: string;
-  features: string[];
+  priceNote?: string;
+  priceSubnote?: string;
   cta: string;
-  ctaHref: string;
-  /** Highlights the recommended tier. */
-  featured?: boolean;
-  /** Optional pill, e.g. "Most popular". */
-  badge?: string;
-}
+  featured: boolean;
+  features: string[];
+};
 
-function CheckIcon() {
-  return (
-    <svg
-      className="price-check"
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.5 7.5l2.8 2.8L11.5 4" />
-    </svg>
-  );
-}
+const CTA_BASE =
+  "wf-lifted inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border-none px-6 text-[14.5px] font-medium transition-colors duration-200 disabled:pointer-events-none disabled:opacity-60";
 
 export function PricingCard({
-  tier,
-  className = "",
+  plan,
+  className,
+  onSelect,
+  loading = false,
+  disabled = false,
 }: {
-  tier: PricingTier;
+  plan: PricingCardPlan;
   className?: string;
+  onSelect?: () => void;
+  loading?: boolean;
+  disabled?: boolean;
 }) {
+  const { featured } = plan;
+
   return (
-    <div className={`price-card${tier.featured ? " featured" : ""} ${className}`.trim()}>
-      {tier.badge && <span className="price-badge">{tier.badge}</span>}
+    <article
+      className={cn(
+        "relative flex flex-col p-8 md:p-9",
+        featured ? "bg-foreground text-background" : "bg-card text-foreground",
+        className,
+      )}
+    >
+      {featured && (
+        <span className="absolute right-8 top-8 inline-flex items-center rounded-full border border-background/15 bg-background/10 px-2.5 py-1 text-[11px] font-semibold text-background">
+          Most popular
+        </span>
+      )}
 
-      <p className="price-name">{tier.name}</p>
-      <p className="price-tagline">{tier.tagline}</p>
-
-      <div className="price-amount">
-        <span className="price-value">{tier.price}</span>
-        {tier.period && <span className="price-period">{tier.period}</span>}
+      <div>
+        <p className="text-[15px] font-medium">{plan.name}</p>
+        {plan.tagline && (
+          <p className={cn("mt-1.5 max-w-[36ch] text-[13.5px] leading-relaxed", featured ? "text-background/60" : "text-muted-foreground")}>
+            {plan.tagline}
+          </p>
+        )}
       </div>
 
-      <div className="price-divider" />
+      {/* Price */}
+      <div className="mt-8 flex items-baseline gap-1.5">
+        <span className="font-serif text-[52px] leading-none tracking-[-0.01em]">{plan.price}</span>
+        {plan.priceNote && (
+          <span className={cn("text-[14px]", featured ? "text-background/60" : "text-muted-foreground")}>{plan.priceNote}</span>
+        )}
+      </div>
+      {plan.priceSubnote && (
+        <p className={cn("mt-2 text-[13px]", featured ? "text-background/50" : "text-muted-foreground")}>{plan.priceSubnote}</p>
+      )}
 
-      <ul className="price-features">
-        {tier.features.map((f) => (
-          <li className="price-feature" key={f}>
-            <CheckIcon />
-            <span>{f}</span>
+      {/* CTA sits above the feature list */}
+      <div className="mt-7">
+        <button
+          type="button"
+          onClick={onSelect}
+          disabled={disabled || loading}
+          className={cn(CTA_BASE, featured ? "bg-background text-foreground hover:bg-background/90" : "bg-primary text-primary-foreground hover:bg-primary/90")}
+        >
+          {loading ? "Processing…" : plan.cta}
+        </button>
+      </div>
+
+      <div className={cn("my-7 h-px", featured ? "bg-background/10" : "bg-border")} />
+
+      <ul className="flex flex-col gap-3">
+        {plan.features.map((f) => (
+          <li
+            key={f}
+            className={cn("flex items-start gap-2.5 text-[14px] leading-relaxed", featured ? "text-background/80" : "text-muted-foreground")}
+          >
+            <Check strokeWidth={2.5} className={cn("mt-[3px] size-[14px] shrink-0", featured ? "text-background/70" : "text-primary")} />
+            {f}
           </li>
         ))}
       </ul>
-
-      <a
-        href={tier.ctaHref}
-        className={`price-cta${tier.featured ? " price-cta-primary" : ""}`}
-      >
-        {tier.cta}
-      </a>
-    </div>
+    </article>
   );
 }

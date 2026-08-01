@@ -1,35 +1,43 @@
 "use client";
 
 import { useState } from "react";
+import { PLANS, STARTING_PRICE, annualPrice } from "@/lib/pricing";
+import { Em, Eyebrow, SectionHeading } from "@/components/landing/sections/section-heading";
+
+const [PRO, ULTRA] = PLANS;
 
 const QUESTIONS: { q: string; a: string }[] = [
   {
     q: "What is Wirefraime?",
-    a: "Wirefraime is an AI wireframe and UI design tool. Describe your app in a sentence, and the AI generates a complete design system, every screen, and every state — ready to ship.",
+    a: "It's an AI tool that turns a one-line product idea into a full UI — a design system, every screen, every state — ready to hand off or ship.",
   },
   {
-    q: "How is Wirefraime different from other wireframe tools?",
-    a: "Most wireframe tools give you empty boxes. Wirefraime is an AI UI designer that produces full, high-fidelity UI mockups with real copy, real components, and a connected design system across every screen.",
+    q: "Who is Wirefraime for?",
+    a: "Anyone who needs to see a product before building it: founders scoping an MVP, PMs pitching a feature, designers skipping the blank-canvas stage, engineers who'd rather not guess at layout.",
   },
   {
     q: "Can I generate wireframes and UI mockups from a text prompt?",
-    a: "Yes. Type a description of your app or feature. Wirefraime's AI plans the screens, designs the wireframe, and refines it into a production-quality UI mockup automatically.",
+    a: "Yes — describe the app or feature, and it plans the screens, builds the wireframe, and polishes it into a production-quality mockup in one pass.",
   },
   {
-    q: "Do I need to be a UI designer to use it?",
-    a: "No. Wirefraime acts as your AI UI designer — founders, PMs, and engineers use it to ship full app designs without hiring a UI designer or learning a wireframe tool.",
+    q: "How is Wirefraime different from a general AI app builder?",
+    a: "Most AI app builders start writing backend code right away. Wirefraime stays at the design layer — screens, states, visual consistency — so you can settle what the product should look and feel like before anyone touches a database.",
   },
   {
     q: "Can I edit the generated wireframes?",
-    a: "Yes. Click any element to edit live in the canvas, or chat with the AI in plain language to refine colors, copy, layout, and components across screens.",
+    a: "Yes. Click anything on the canvas to edit it directly, or just tell the AI what to change — colors, copy, layout, whole components — across every screen at once.",
   },
   {
     q: "What can I export?",
-    a: "Production-ready HTML and Tailwind CSS, a full Next.js project, or PNG screenshots at 2x — ready for developer handoff or direct deployment.",
+    a: "Clean HTML and Tailwind, a full Next.js project, or 2x PNGs — whatever your team needs for handoff or to ship straight away.",
   },
   {
-    q: "What AI models power Wirefraime?",
-    a: "Wirefraime is powered by Google Gemini for UI design generation and Anthropic Claude for chat-based refinement, accessed via the Vercel AI SDK.",
+    q: "How much does Wirefraime cost?",
+    a: `Pro runs $${PRO.priceMonthly}/mo (or $${annualPrice(PRO.priceMonthly)}/mo billed annually) and includes ${PRO.features[0].toLowerCase()}. Ultra is $${ULTRA.priceMonthly}/mo (or $${annualPrice(ULTRA.priceMonthly)}/mo annually), with ${ULTRA.features[0].toLowerCase()}. Cancel whenever you want.`,
+  },
+  {
+    q: "Can I try it for free?",
+    a: `You can sign up and poke around the workspace for free. Actually generating screens needs a paid plan — plans start at $${STARTING_PRICE}/mo billed annually.`,
   },
 ];
 
@@ -47,27 +55,26 @@ export function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="faq" className="relative px-5 py-24 md:px-10 md:py-32">
+    <section id="faq" className="relative px-6 py-20 md:px-10 md:py-28">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSON_LD) }}
       />
 
       <div className="mx-auto max-w-3xl">
-        <div className="mb-14 text-center md:mb-20">
-          <span className="text-[11px] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-            FAQ
-          </span>
-          <h2 className="mt-4 text-[clamp(30px,4.5vw,52px)] font-semibold leading-[1.05] tracking-[-0.025em] text-foreground">
-            Questions, answered
-          </h2>
-          <p className="mx-auto mt-4 max-w-md text-balance text-base leading-relaxed text-muted-foreground md:text-lg">
-            What Wirefraime does, how it compares to other wireframe tools,
-            and how teams use it.
-          </p>
+        <div className="mb-12 md:mb-16">
+          <SectionHeading
+            align="center"
+            eyebrow={<Eyebrow>FAQ</Eyebrow>}
+            title={
+              <>
+                Questions, <Em>answered</Em>
+              </>
+            }
+          />
         </div>
 
-        <div className="divide-y divide-foreground/[0.08] border-y border-foreground/[0.08]">
+        <div className="divide-y divide-border border-y border-border">
           {QUESTIONS.map((item, i) => {
             const isOpen = open === i;
             return (
@@ -75,7 +82,7 @@ export function FAQ() {
                 <button
                   onClick={() => setOpen(isOpen ? null : i)}
                   aria-expanded={isOpen}
-                  className="flex w-full items-center justify-between gap-6 py-5 text-left text-[15px] font-medium text-foreground transition-colors hover:text-primary md:text-base"
+                  className="flex w-full items-center justify-between gap-6 py-5 text-left text-[15px] font-medium text-foreground transition-colors hover:text-muted-foreground md:text-base"
                 >
                   <span>{item.q}</span>
                   <svg

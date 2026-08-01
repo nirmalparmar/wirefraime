@@ -43,11 +43,7 @@ export function Navbar({
             <Link
               key={link.label}
               href={link.href}
-              className={`text-sm font-medium transition-colors ${
-                link.active
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className="text-sm font-medium transition-colors text-foreground"
             >
               {link.label}
             </Link>

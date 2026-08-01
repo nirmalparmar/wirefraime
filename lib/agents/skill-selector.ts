@@ -12,20 +12,17 @@
  */
 import fs from "fs";
 import path from "path";
-import { InMemoryRunner, LlmAgent } from "@google/adk";
-import type { Content } from "@google/genai";
 import { z } from "zod";
-// Importing from adk-helpers also runs its module side-effect that mirrors
-// GOOGLE_API_KEY → GEMINI_API_KEY, so the ADK runner authenticates.
-import { loadSkillFromDir } from "./adk-helpers";
+import { Agent, loadSkillFromDir } from "./adk-helpers";
+import { modelIdFor } from "@/lib/llm";
 import { tryParseJsonLoose } from "./html-utils";
 
-/** gemini pro: flash-lite returns malformed JSON for structured routing. */
-const SELECTION_MODEL = "gemini-3.1-pro-preview";
+/** Routing model — a cheap structured call. Env override, else the fast role. */
+const selectionModel = () => process.env.SELECTION_MODEL?.trim() || modelIdFor("fast");
 
 /** Curated pool the selector may choose from. Add a skill by adding its dir. */
 const ELIGIBLE: { slug: string; dir: string }[] = [
-  { slug: "landing-page-builder", dir: ".agents/skills/landing-page-builder" },
+  // { slug: "landing-page-builder", dir: ".agents/skills/landing-page-builder" },
   { slug: "frontend-design", dir: ".agents/skills/frontend-design" },
 ];
 
@@ -139,20 +136,20 @@ const SkillChoiceSchema = z.object({
   reasoning: z.string().describe("One short sentence explaining the choice."),
 });
 
-let _selectorAgent: LlmAgent | null = null;
-function getSelectorAgent(): LlmAgent {
+let _selectorAgent: Agent | null = null;
+function getSelectorAgent(): Agent {
   if (_selectorAgent) return _selectorAgent;
-  const instruction = `You are a design-skill router. You are given an app brief and a list of candidate design skills, each with a slug and a description of when to use it.
+  const instructions = `You are a design-skill router. You are given an app brief and a list of candidate design skills, each with a slug and a description of when to use it.
 
 Pick the SINGLE skill whose description best matches what the user wants to build. Weigh the artifact type (landing/marketing page vs. app/dashboard UI), the aesthetic, and the explicit "use this when..." guidance in each description. If a reference image is attached, factor in its visual style.
 
 Return JSON with two fields: "skill" (the exact slug you chose, or the literal string none if nothing clearly fits) and "reasoning" (one short sentence). Choose only from the provided slugs.`;
-  _selectorAgent = new LlmAgent({
+  _selectorAgent = new Agent({
     name: "skill_selector_agent",
-    model: SELECTION_MODEL,
-    instruction,
+    model: selectionModel(),
+    instructions,
     outputSchema: SkillChoiceSchema,
-    generateContentConfig: { maxOutputTokens: 4096, temperature: 0.2 },
+    temperature: 0.2,
   });
   return _selectorAgent;
 }
@@ -182,19 +179,7 @@ ${candidates}
 Choose the best-fit slug.`;
 
   try {
-    const parts: Content["parts"] = [{ text: userPrompt }];
-    if (image) parts.push({ inlineData: { mimeType: image.mimeType, data: image.data } });
-
-    const runner = new InMemoryRunner({ agent: getSelectorAgent(), appName: "wirefraime" });
-    let text = "";
-    for await (const event of runner.runEphemeral({
-      userId: "system",
-      newMessage: { role: "user", parts },
-    })) {
-      for (const part of event.content?.parts ?? []) {
-        if (typeof part.text === "string") text += part.text;
-      }
-    }
+    const { text } = await getSelectorAgent().chat(userPrompt, image);
 
     const json = tryParseJsonLoose(text);
     const parsed = SkillChoiceSchema.safeParse(json);

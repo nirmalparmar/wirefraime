@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useWorkspace } from "@/lib/store/use-workspace";
 import {
   DropdownMenu,
@@ -39,7 +40,7 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="group/tip relative flex items-center">
       {children}
-      <span className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-foreground/6 bg-popover px-2 py-1 text-xs font-medium text-foreground/70 opacity-0 shadow-sm transition-opacity duration-100 group-hover/tip:opacity-100">
+      <span className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-foreground/10 bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground/65 opacity-0 shadow-md transition-opacity duration-100 group-hover/tip:opacity-100">
         {label}
       </span>
     </div>
@@ -63,7 +64,7 @@ function IconBtn({
       <button
         onClick={onClick}
         disabled={disabled}
-        className="flex size-8 items-center justify-center rounded-lg text-foreground transition-all hover:bg-foreground/6 hover:text-foreground disabled:pointer-events-none disabled:opacity-25"
+        className="flex size-8 items-center justify-center rounded-[10px] text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground disabled:pointer-events-none disabled:opacity-20"
       >
         {children}
       </button>
@@ -87,10 +88,10 @@ function SegTab({
     <button
       onClick={onClick}
       title={label}
-      className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors ${
+      className={`wf-view-tab flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors ${
         active
-          ? "btn-fx text-foreground"
-          : "text-foreground/55 hover:text-foreground/80"
+          ? "wf-view-tab-active text-foreground"
+          : "text-foreground/55 hover:text-foreground"
       }`}
     >
       {icon}
@@ -100,7 +101,7 @@ function SegTab({
 }
 
 function VDivider() {
-  return <div className="mx-1 h-5 w-px shrink-0 bg-border" />;
+  return <div className="mx-0.5 w-1 shrink-0" />;
 }
 
 /* ── WorkspaceTopbar ────────────────────────────────────────── */
@@ -183,14 +184,14 @@ export function WorkspaceTopbar({
     : "Untitled";
 
   return (
-    <header className="relative flex h-14 w-full shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3">
+    <header className="wf-studio-topbar relative flex h-14 w-full shrink-0 items-center justify-between gap-2 bg-background px-3.5">
 
       {/* ════ LEFT: identity + project ════ */}
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2.5">
         <Tip label="Dashboard">
           <Link
             href="/dashboard"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground/45 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+            className="flex size-8 shrink-0 items-center justify-center rounded-[10px] text-foreground/40 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
             aria-label="Back to dashboard"
           >
             <svg width={I} height={I} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -200,15 +201,15 @@ export function WorkspaceTopbar({
         </Tip>
 
         {/* Logo badge */}
-        <img src="/logo.png" className="w-8" />
+        <Image src="/logo.png" alt="" width={32} height={32} className="size-8 rounded-[10px]" />
 
         {/* Project name + screen dropdown + status */}
-        <div className="flex min-w-0 flex-col leading-tight">
+        <div className="flex min-w-0 flex-col justify-center leading-tight">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 disabled={screenCount === 0}
-                className="flex max-w-[220px] items-center gap-1 rounded-md text-left text-sm font-semibold tracking-[-0.01em] text-foreground transition-colors hover:text-foreground/70 disabled:pointer-events-none"
+                className="flex max-w-[220px] items-center gap-1 rounded-md text-left text-[14px] font-semibold tracking-[-0.015em] text-foreground transition-colors hover:text-foreground/72 disabled:pointer-events-none"
               >
                 <span className="truncate">{app.name}</span>
                 {screenCount > 0 && (
@@ -249,7 +250,7 @@ export function WorkspaceTopbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <span className="flex items-center gap-1.5 text-xs text-foreground/95">
+          <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             {isGenerating && (
               <span className="flex shrink-0 items-center gap-[3px]">
                 {[0, 120, 240].map((d) => (
@@ -263,7 +264,7 @@ export function WorkspaceTopbar({
       </div>
 
       {/* ════ CENTER: view-mode segmented control ════ */}
-      <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-0.5 rounded-xl border border-border bg-muted/60 p-1">
+      <div className="wf-view-switch absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center gap-0.5 rounded-lg bg-muted/60 p-[3px]">
         <SegTab
           active={isPreview}
           onClick={selectPreview}
@@ -340,7 +341,7 @@ export function WorkspaceTopbar({
               <button
                 onClick={handleShare}
                 disabled={isSharing}
-                className="btn-fx flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-foreground/85 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                className="wf-topbar-secondary flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium text-foreground/85 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
               >
                 {shareState === "copied" ? (
                   <>
@@ -368,7 +369,7 @@ export function WorkspaceTopbar({
               <DropdownMenuTrigger asChild>
                 <button
                   disabled={isExporting}
-                  className="btn-fx-primary flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium disabled:pointer-events-none disabled:opacity-50"
+                  className="wf-topbar-primary flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-semibold disabled:pointer-events-none disabled:opacity-50"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 3v13M8 12l4 4 4-4M20 19H4" />

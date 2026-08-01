@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo, useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useRef, useEffect, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
   Controls,
   BackgroundVariant,
+  NodeToolbar,
   PanOnScrollMode,
+  Position,
   useReactFlow,
   useViewport,
+  useNodesState,
   type Node,
   type NodeProps,
   type ColorMode,
@@ -17,95 +20,23 @@ import {
 import "@xyflow/react/dist/style.css";
 import { useWorkspace } from "@/lib/store/use-workspace";
 import { LiveIframe } from "./LiveIframe";
-import { SERIF, SANS, C, VIEWPORTS } from "@/lib/constants";
+import type { IframeWheelInput } from "./LiveIframe";
+import { SANS, C, VIEWPORTS } from "@/lib/constants";
+import { exportScreenPng } from "@/lib/export-screen-png";
 import type { SelectedElement } from "@/lib/store/use-workspace";
 
-/* ── PNG export ──
-   Uses `modern-screenshot` (maintained fork of dom-to-image). It explicitly
-   handles cross-origin stylesheets by fetching their text rather than reading
-   `cssRules`, which is what made `html-to-image` crash with SecurityError on
-   Google Fonts / external CDNs. */
-async function exportScreenPng(html: string, vpW: number, screenName: string) {
-  const slug = screenName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "screen";
-
-  const iframe = document.createElement("iframe");
-  iframe.style.cssText = `position:fixed;left:-9999px;top:0;width:${vpW}px;height:100vh;border:none;opacity:0;pointer-events:none;`;
-  document.body.appendChild(iframe);
-
-  try {
-    // 1. Render the HTML in a hidden iframe
-    await new Promise<void>((resolve, reject) => {
-      iframe.onload = () => resolve();
-      iframe.onerror = () => reject(new Error("iframe failed to load"));
-      iframe.srcdoc = html;
-    });
-
-    const doc = iframe.contentDocument;
-    if (!doc?.body) throw new Error("iframe document not ready");
-
-    // 2. Wait for fonts + images
-    try { await doc.fonts?.ready; } catch { /* fonts API missing */ }
-    const imgs = Array.from(doc.images).filter((i) => !i.complete);
-    if (imgs.length) {
-      await Promise.all(
-        imgs.map(
-          (img) =>
-            new Promise<void>((r) => {
-              const done = () => r();
-              img.addEventListener("load", done, { once: true });
-              img.addEventListener("error", done, { once: true });
-              setTimeout(done, 3000); // hard cap so a broken image can't stall us
-            })
-        )
-      );
-    }
-    await new Promise((r) => setTimeout(r, 150));
-
-    // 3. Measure real content height
-    const contentH = Math.max(
-      doc.documentElement.scrollHeight,
-      doc.body.scrollHeight,
-      doc.body.offsetHeight
-    );
-    iframe.style.height = `${contentH}px`;
-    await new Promise((r) => setTimeout(r, 80));
-
-    // 4. Render to PNG. `modern-screenshot` reads cross-origin stylesheets
-    //    via fetch, not cssRules — no SecurityError.
-    const { domToPng } = await import("modern-screenshot");
-    const dataUrl = await domToPng(doc.documentElement, {
-      width: vpW,
-      height: contentH,
-      scale: 2,
-      backgroundColor: getComputedStyle(doc.body).backgroundColor || "#ffffff",
-    });
-
-    if (!dataUrl || !dataUrl.startsWith("data:image/")) {
-      throw new Error("export produced empty image");
-    }
-
-    // 5. Trigger download
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = `${slug}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    document.body.removeChild(iframe);
-  }
-}
-
 const GRID_COLS = 3;
-const CARD_GAP = 80;
-const LABEL_H = 44;
+const CARD_GAP = 72;
+const LABEL_H = 38;
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 2;
 const PAN_ON_SCROLL_SPEED = 0.8;
 
+/* Stable empty-edges reference. Passing an inline `edges={[]}` makes React
+   Flow's StoreUpdater call setEdges on every render (new array reference). */
+const NO_EDGES: never[] = [];
+
 /* ── Card shadow tokens — adapt per theme ── */
-const SHADOW_CARD = "var(--shadow-card)";
-const SHADOW_CARD_ACTIVE = "var(--shadow-card-active)";
 const SHADOW_SKELETON = "var(--shadow-card-active)";
 
 /* ── Generating animation ──
@@ -213,6 +144,7 @@ type ScreenNodeData = {
   onHtmlUpdated: (html: string, editKey?: string | null) => void;
   onIframeMount: (el: HTMLIFrameElement | null) => void;
   onContentHeight: (height: number) => void;
+  onCanvasWheel: (event: IframeWheelInput) => void;
 };
 
 type ScreenNode = Node<ScreenNodeData, "screen">;
@@ -221,15 +153,16 @@ type ScreenNode = Node<ScreenNodeData, "screen">;
 function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
   const { vpW, vpH, contentHeight } = data;
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   // Use actual content height when available; fall back to viewport height only during streaming or before report
   const displayH = contentHeight > 0 ? contentHeight : vpH;
 
   if (data.isSkeleton) {
     return (
-      <div style={{ width: vpW, display: "flex", flexDirection: "column", gap: 14, contain: "layout style paint" }}>
-        <div style={{ height: 14, width: 120, background: C.borderSub, borderRadius: 6 }} />
+      <div style={{ width: vpW, display: "flex", flexDirection: "column", gap: 10, contain: "layout style paint" }}>
+        <div style={{ height: 18, width: 132, background: "var(--canvas-node-label)", borderRadius: 4 }} />
         <div style={{
-          width: vpW, height: vpH, background: "var(--card)", borderRadius: 20,
+          width: vpW, height: vpH, background: "var(--card)", borderRadius: 16,
           boxShadow: SHADOW_SKELETON, position: "relative", overflow: "hidden",
         }}>
           <GeneratingCard label={data.genStep || "Preparing…"} sublabel="This may take a moment" />
@@ -239,76 +172,94 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
   }
 
   return (
-    <div style={{ width: vpW, display: "flex", flexDirection: "column", gap: 14, contain: "layout style paint" }}>
-      {/* Label row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 2 }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, color: data.isActive ? C.text3 : C.text4 }}>
-          <rect x="1.5" y="2" width="11" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
-          <path d="M5.5 12h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          <path d="M7 10v2" stroke="currentColor" strokeWidth="1.2" />
-        </svg>
-        <span style={{
-          fontFamily: SANS, fontSize: 13, userSelect: "none", letterSpacing: "0.01em",
-          color: data.isActive ? C.text2 : C.text4,
-          fontWeight: 500,
-        }}>
-          {data.screenName}
-        </span>
-        <div style={{ flex: 1, height: 0, borderTop: `1px dashed color-mix(in srgb, currentColor 20%, transparent)`, color: C.text4, minWidth: 20 }} />
-        {data.isStreaming && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: SANS, fontSize: 11, color: C.wsAccent }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.wsAccent, display: "inline-block", animation: "wfPulse 1.4s ease infinite" }} />
-            live
+    <div className="group/screen" style={{ width: vpW, contain: "layout style paint" }}>
+      {/* React Flow's NodeToolbar is rendered outside the zoomed viewport
+          transform, so this screen chrome stays legible at fit-view zooms. */}
+      <NodeToolbar
+        isVisible
+        position={Position.Top}
+        align="start"
+        offset={12}
+        className="wf-screen-toolbar nodrag nopan pointer-events-auto"
+      >
+        <div className="wf-screen-label flex h-9 items-center gap-2.5 px-1">
+          <span
+            className={`size-2 shrink-0 rounded-full ${data.isActive ? "bg-ws-accent" : "bg-foreground/30"}`}
+          />
+          <span style={{
+            fontFamily: SANS, fontSize: 14, userSelect: "none", letterSpacing: "-0.015em",
+            color: data.isActive ? "var(--foreground)" : "var(--muted-foreground)",
+            fontWeight: 650,
+          }}>
+            {data.screenName}
           </span>
-        )}
-        {!data.isStreaming && data.html && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground/75">
+            {vpW} × {Math.round(displayH)}
+          </span>
+          {data.isStreaming && (
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ws-accent">
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.wsAccent, display: "inline-block", animation: "wfPulse 1.4s ease infinite" }} />
+              Live
+            </span>
+          )}
+        </div>
+      </NodeToolbar>
+
+      {!data.isStreaming && data.html && (
+        <NodeToolbar
+          isVisible
+          position={Position.Top}
+          align="end"
+          offset={12}
+          className="wf-screen-toolbar nodrag nopan pointer-events-auto"
+        >
           <button
-            title={exporting ? "Exporting..." : "Export as PNG"}
+            aria-label={exportError ? "Retry PNG export" : "Export screen as PNG"}
+            title={
+              exporting
+                ? "Exporting..."
+                : exportError || "Export as PNG"
+            }
             disabled={exporting}
             onClick={async (e) => {
               e.stopPropagation();
               if (exporting) return;
               setExporting(true);
+              setExportError(null);
               try {
                 await exportScreenPng(data.html, vpW, data.screenName);
               } catch (err) {
-                const msg =
-                  err instanceof Error
-                    ? `${err.name}: ${err.message}\n${err.stack ?? ""}`
-                    : typeof err === "string"
-                      ? err
-                      : (() => {
-                          try { return JSON.stringify(err); } catch { return String(err); }
-                        })();
-                console.error("[export-png]", msg, err);
+                setExportError("PNG export failed. Click to try again.");
+                console.warn("[export-png]", err);
               } finally {
                 setExporting(false);
               }
             }}
-            className="group/exp inline-flex items-center gap-1.5 rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-foreground/70 transition shadow-[var(--ws-raised)] hover:text-foreground hover:shadow-[var(--ws-soft)] disabled:cursor-default disabled:opacity-60"
-            style={{ fontFamily: SANS }}
+            className={`group/exp inline-flex h-9 items-center gap-2 rounded-xl px-3.5 font-mono text-[10px] font-semibold uppercase tracking-[0.055em] shadow-[0_2px_7px_rgba(25,27,23,0.09),0_14px_34px_-22px_rgba(25,27,23,0.5)] transition-[color,background-color,box-shadow,transform] hover:-translate-y-px hover:shadow-[0_3px_9px_rgba(25,27,23,0.12),0_18px_38px_-22px_rgba(25,27,23,0.58)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ws-accent/35 disabled:cursor-default disabled:opacity-60 ${
+              exportError ? "bg-destructive/10 text-destructive" : "bg-card text-foreground/75 hover:text-foreground"
+            }`}
           >
             {exporting ? (
               <>
-                <span className="inline-block size-3 animate-spin rounded-full border-[1.5px] border-foreground/30 border-t-foreground" />
+                <span className="inline-block size-3.5 animate-spin rounded-full border-[1.5px] border-foreground/30 border-t-foreground" />
                 <span>Exporting…</span>
               </>
             ) : (
               <>
                 {/* Image-export icon: picture frame with download arrow */}
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="1.5" y="2" width="13" height="9.5" rx="2" />
                   <circle cx="5" cy="5.5" r="1" fill="currentColor" stroke="none" />
                   <path d="M14.5 8.5l-3-2.5-5 4.5" />
                   <path d="M8 14v-2" />
                   <path d="M6 13l2 2 2-2" />
                 </svg>
-                <span>Export</span>
+                <span>{exportError ? "Retry export" : "Export"}</span>
               </>
             )}
           </button>
-        )}
-      </div>
+        </NodeToolbar>
+      )}
 
       {/* Iframe card.
           Clipping (overflow:hidden + contain:paint) stays so a streaming
@@ -317,12 +268,15 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
           painted at, so iframe content stayed blurry after zooming in. Without
           the explicit promotion Chrome re-rasterizes at the effective scale —
           crisp screens at every zoom level. */}
-      <div style={{
+      <div
+        className="wf-screen-frame"
+        data-active={data.isActive && !data.isStreaming ? "true" : "false"}
+        style={{
         borderRadius: 16, overflow: "hidden", position: "relative",
         pointerEvents: data.isStreaming ? "none" : data.isActive ? "auto" : "none",
-        border: data.isActive && !data.isStreaming ? `2px solid ${C.wsAccent}` : "none",
         contain: "layout style paint",
-      }}>
+      }}
+      >
         <LiveIframe
           key={id}
           screenId={id}
@@ -335,6 +289,7 @@ function ScreenNodeComponent({ id, data }: NodeProps<ScreenNode>) {
           onHtmlUpdated={data.onHtmlUpdated}
           onIframeMount={data.onIframeMount}
           onContentHeight={data.onContentHeight}
+          onCanvasWheel={data.onCanvasWheel}
         />
         {/*
           Shimmer overlay: visible until we have BOTH stream chunks AND
@@ -363,6 +318,8 @@ const nodeTypes = { screen: ScreenNodeComponent };
 export interface WheelInput {
   deltaX: number;
   deltaY: number;
+  deltaMode?: number;
+  shiftKey?: boolean;
   ctrlKey?: boolean;
   metaKey?: boolean;
   clientX: number; // PAGE-space cursor X
@@ -392,10 +349,10 @@ function ZoomBar({ onFit }: { onFit: () => void }) {
   const pct = Math.round(zoom * 100);
 
   const btn =
-    "flex size-7 items-center justify-center rounded-lg text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground";
+    "flex size-8 items-center justify-center rounded-full text-foreground/55 transition-colors hover:bg-foreground/[0.06] hover:text-foreground";
 
   return (
-    <div className="pointer-events-auto absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-2xl border border-border bg-[var(--surface-glass-strong)] px-1.5 py-1 shadow-[0_2px_10px_-3px_rgba(20,20,20,0.18),0_12px_32px_-18px_rgba(20,20,20,0.30)] backdrop-blur-md">
+    <div className="wf-canvas-zoom pointer-events-auto absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-[18px] border px-1.5 py-1.5">
       <button onClick={() => zoomOut({ duration: 200 })} title="Zoom out" className={btn}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M5 12h14" />
@@ -404,7 +361,7 @@ function ZoomBar({ onFit }: { onFit: () => void }) {
       <button
         onClick={onFit}
         title="Fit view"
-        className="min-w-[52px] rounded-lg px-1.5 py-1 text-center text-[12px] font-medium tabular-nums text-foreground/65 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+        className="min-w-[56px] rounded-xl px-1.5 py-1 text-center text-[12px] font-medium tabular-nums text-foreground/65 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
       >
         {pct}%
       </button>
@@ -413,7 +370,7 @@ function ZoomBar({ onFit }: { onFit: () => void }) {
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
-      <span className="mx-0.5 h-4 w-px bg-border" />
+      <span className="mx-0.5 h-4 w-px bg-foreground/10" />
       <button onClick={onFit} title="Fit to screen" className={btn}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
@@ -423,12 +380,41 @@ function ZoomBar({ onFit }: { onFit: () => void }) {
   );
 }
 
+/* ── Viewport → CSS vars + zoom flag (Banani-style smooth zoom) ──
+   Publishes the live camera zoom as `--canvas-zoom` / `--inverse-zoom` on the
+   canvas wrapper, and flags `data-canvas-zooming` while a ZOOM gesture is
+   active (cleared ~160ms after the last zoom step). Workspace CSS uses the flag
+   to promote node layers to the GPU during the gesture — the transform then
+   composites without re-rasterizing every iframe each frame, and re-rasterizes
+   once (crisp) when it settles. --inverse-zoom lets chrome (labels/handles)
+   stay a constant on-screen size. Isolated leaf: the per-frame `useViewport`
+   re-render lands here (returns null), never on the heavy node tree; all writes
+   are imperative. */
+function ViewportVars({ targetRef }: { targetRef: React.RefObject<HTMLDivElement | null> }) {
+  const { zoom } = useViewport();
+  const clearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    el.style.setProperty("--canvas-zoom", String(zoom));
+    el.style.setProperty("--inverse-zoom", String(1 / zoom));
+    el.setAttribute("data-canvas-zooming", "true");
+    if (clearRef.current) clearTimeout(clearRef.current);
+    clearRef.current = setTimeout(() => {
+      targetRef.current?.removeAttribute("data-canvas-zooming");
+    }, 160);
+    return () => { if (clearRef.current) clearTimeout(clearRef.current); };
+  }, [zoom, targetRef]);
+  return null;
+}
+
 /* ── Inner canvas (inside ReactFlowProvider) ── */
 function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyWheelRef, focusScreenRef }: CanvasProps) {
   const { state, dispatch } = useWorkspace();
   const { app, isGenerating, genStep, activeScreenId } = state;
-  const { fitView, setViewport, getViewport, updateNodeData } = useReactFlow();
+  const { fitView, setViewport, getViewport, screenToFlowPosition, updateNodeData } = useReactFlow();
   const iframeMapRef = useRef<Map<string, HTMLIFrameElement>>(new Map());
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [contentHeights, setContentHeights] = useState<Map<string, number>>(new Map());
 
   // Expose fitView to parent (CanvasActions "Fit to view" button)
@@ -504,24 +490,50 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
     }, 800);
   }, [app.designSystem]);
 
-  /* Single source of truth for wheel-based pan/zoom. Called by:
+  /* React Flow-compatible wheel handling for events that cannot reach its
+     ZoomPane directly. Called by:
      - iframe bridge postMessage forwarder (cursor inside iframe content)
      - workspace-level window wheel handler (cursor over floating UI)
      React Flow handles wheel over its own pane natively.
 
-     Deltas are ACCUMULATED and applied once per animation frame. Trackpads
-     fire wheel events far faster than 60Hz (and the iframe postMessage path
-     can deliver several per frame); applying each one individually caused a
-     React Flow viewport update per event — the source of the pan/zoom jank. */
+     Deltas are accumulated and applied once per animation frame. The zoom
+     curve and delta-mode normalization mirror React Flow's XYPanZoom wheel
+     handlers, while screenToFlowPosition keeps the flow coordinate beneath
+     the cursor fixed when the event originated inside an iframe. */
   const wheelPendingRef = useRef<{
-    dx: number; dy: number; zoomDy: number; clientX: number; clientY: number;
+    dx: number; dy: number; zoomDelta: number; clientX: number; clientY: number;
   } | null>(null);
   const wheelRafRef = useRef<number | null>(null);
 
   const applyWheel = useCallback((w: WheelInput) => {
-    const pend = wheelPendingRef.current ?? { dx: 0, dy: 0, zoomDy: 0, clientX: w.clientX, clientY: w.clientY };
-    if (w.ctrlKey || w.metaKey) pend.zoomDy += w.deltaY;
-    else { pend.dx += w.deltaX; pend.dy += w.deltaY; }
+    const pend = wheelPendingRef.current ?? {
+      dx: 0,
+      dy: 0,
+      zoomDelta: 0,
+      clientX: w.clientX,
+      clientY: w.clientY,
+    };
+    const isZoomGesture = w.ctrlKey || w.metaKey;
+
+    if (isZoomGesture) {
+      // Keep external wheel input on the same curve React Flow uses internally:
+      // https://github.com/xyflow/xyflow/blob/main/packages/system/src/xypanzoom/utils.ts
+      const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+      const pinchFactor = w.ctrlKey && isMac ? 10 : 1;
+      const deltaModeFactor = w.deltaMode === 1 ? 0.05 : w.deltaMode ? 1 : 0.002;
+      pend.zoomDelta += -w.deltaY * deltaModeFactor * pinchFactor;
+    } else {
+      // Match React Flow's Firefox line-mode normalization and Windows
+      // shift+wheel horizontal panning behavior.
+      const deltaNormalize = w.deltaMode === 1 ? 20 : 1;
+      const isMac = typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
+      if (!isMac && w.shiftKey) {
+        pend.dx += w.deltaY * deltaNormalize;
+      } else {
+        pend.dx += w.deltaX * deltaNormalize;
+        pend.dy += w.deltaY * deltaNormalize;
+      }
+    }
     pend.clientX = w.clientX;
     pend.clientY = w.clientY;
     wheelPendingRef.current = pend;
@@ -535,21 +547,28 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
 
       const v = getViewport();
       let { x, y, zoom } = v;
-      if (p.zoomDy !== 0) {
-        // Cursor-anchored zoom. exp() keeps trackpad pinch (many small deltas)
-        // and ctrl+wheel (~100/tick) equally smooth.
-        const factor = Math.exp(-p.zoomDy * 0.01);
-        const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom * factor));
-        const k = nextZoom / zoom;
-        x = p.clientX - (p.clientX - x) * k;
-        y = p.clientY - (p.clientY - y) * k;
+      if (p.zoomDelta !== 0) {
+        const cursorFlowPosition = screenToFlowPosition({
+          x: p.clientX,
+          y: p.clientY,
+        });
+        const nextZoom = Math.max(
+          MIN_ZOOM,
+          Math.min(MAX_ZOOM, zoom * Math.pow(2, p.zoomDelta))
+        );
+
+        // x/y are relative to the React Flow pane, while clientX/clientY are
+        // page coordinates. Anchoring with a flow-space point avoids mixing
+        // those coordinate systems and keeps the cursor over the same pixel.
+        x += cursorFlowPosition.x * (zoom - nextZoom);
+        y += cursorFlowPosition.y * (zoom - nextZoom);
         zoom = nextZoom;
       }
       x -= p.dx * PAN_ON_SCROLL_SPEED;
       y -= p.dy * PAN_ON_SCROLL_SPEED;
       setViewport({ x, y, zoom });
     });
-  }, [getViewport, setViewport]);
+  }, [getViewport, screenToFlowPosition, setViewport]);
 
   // Cancel any pending wheel frame on unmount
   useEffect(() => () => {
@@ -563,42 +582,24 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
     return () => { if (applyWheelRef) applyWheelRef.current = null; };
   }, [applyWheel, applyWheelRef]);
 
-  /* IFRAME_WHEEL — bridge forwards wheel events from inside iframes. Convert
-     iframe-relative cursor coords to page-relative, then apply. */
-  useEffect(() => {
-    function handleMessage(e: MessageEvent) {
-      if (!e.data || e.data.type !== "IFRAME_WHEEL") return;
-      const sourceIframe = Array.from(iframeMapRef.current.values()).find(
-        (f) => f.contentWindow === e.source
-      );
-      if (!sourceIframe) return;
-
-      const rect = sourceIframe.getBoundingClientRect();
-      applyWheel({
-        deltaX: (e.data.deltaX ?? 0) as number,
-        deltaY: (e.data.deltaY ?? 0) as number,
-        ctrlKey: !!e.data.ctrlKey,
-        metaKey: !!e.data.metaKey,
-        clientX: rect.left + (e.data.clientX ?? 0),
-        clientY: rect.top + (e.data.clientY ?? 0),
-      });
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [applyWheel]);
+  // Read activeScreenId through a ref so this callback stays referentially
+  // stable — the node reconciler reuses node objects, and stable callbacks let
+  // unchanged iframe nodes keep their data reference (no re-render).
+  const activeScreenIdRef = useRef(activeScreenId);
+  useEffect(() => { activeScreenIdRef.current = activeScreenId; }, [activeScreenId]);
 
   const handleElementSelected = useCallback(
     (screenId: string, element: SelectedElement | null) => {
       // The bridge re-describes the selection after every edit; dispatching
       // SET_ACTIVE_SCREEN unconditionally would reset the undo-coalescing key
       // mid-drag and spam the undo stack with per-frame entries.
-      if (screenId !== activeScreenId) {
+      if (screenId !== activeScreenIdRef.current) {
         dispatch({ type: "SET_ACTIVE_SCREEN", id: screenId });
       }
       dispatch({ type: "SELECT_ELEMENT", element });
       if (element) onIframeRef(iframeMapRef.current.get(screenId) ?? null);
     },
-    [dispatch, onIframeRef, activeScreenId]
+    [dispatch, onIframeRef]
   );
 
   const handleHtmlUpdated = useCallback(
@@ -633,88 +634,123 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
     });
   }, []);
 
-  /* Map screens → React Flow nodes */
-  const nodes: ScreenNode[] = useMemo(() => {
-    const rowMaxH: number[] = [];
-    for (let i = 0; i < app.screens.length; i++) {
-      const row = Math.floor(i / GRID_COLS);
-      const ch = contentHeights.get(app.screens[i].id);
-      const h = ch && ch > 0 ? ch : CANVAS_H;
-      rowMaxH[row] = Math.max(rowMaxH[row] ?? 0, h);
-    }
+  /* React Flow owns node state (controlled via useNodesState + onNodesChange).
+     A reconciling effect syncs app.screens → nodes and REUSES unchanged node
+     objects, so (a) heavy iframe nodes don't re-render when an unrelated
+     screen's height changes and (b) imperative updateNodeData(streamTick) is
+     never clobbered — React Flow's StoreUpdater resets the store to the
+     `nodes` prop whenever its reference changes, which the old per-render
+     useMemo triggered constantly. */
+  const [nodes, setNodes, onNodesChange] = useNodesState<ScreenNode>([]);
 
-    const rowY: number[] = [0];
-    for (let r = 1; r <= rowMaxH.length; r++) {
-      rowY[r] = rowY[r - 1] + (rowMaxH[r - 1] ?? CANVAS_H) + CARD_GAP + LABEL_H;
-    }
+  useEffect(() => {
+    setNodes((prev) => {
+      const prevById = new Map(prev.map((n) => [n.id, n]));
 
-    const result: ScreenNode[] = app.screens.map((screen, i) => {
-      const row = Math.floor(i / GRID_COLS);
-      const col = i % GRID_COLS;
-      const ch = contentHeights.get(screen.id);
-      const screenH = ch && ch > 0 ? ch : CANVAS_H;
+      const rowMaxH: number[] = [];
+      for (let i = 0; i < app.screens.length; i++) {
+        const row = Math.floor(i / GRID_COLS);
+        const ch = contentHeights.get(app.screens[i].id);
+        const h = ch && ch > 0 ? ch : CANVAS_H;
+        rowMaxH[row] = Math.max(rowMaxH[row] ?? 0, h);
+      }
+      const rowY: number[] = [0];
+      for (let r = 1; r <= rowMaxH.length; r++) {
+        rowY[r] = rowY[r - 1] + (rowMaxH[r - 1] ?? CANVAS_H) + CARD_GAP + LABEL_H;
+      }
 
-      return {
-        id: screen.id,
-        type: "screen" as const,
-        position: {
-          x: col * (CANVAS_W + CARD_GAP),
-          y: rowY[row],
-        },
-        data: {
-          screenName: screen.name,
-          html: screen.html,
-          isStreaming: screen.isStreaming ?? false,
-          streamChunksRef: streamChunks,
-          streamTick: 0,
-          isActive: screen.id === activeScreenId,
-          isSkeleton: false,
-          vpW: CANVAS_W,
-          vpH: CANVAS_H,
-          contentHeight: ch ?? 0,
-          onElementSelected: (el) => handleElementSelected(screen.id, el),
-          onHtmlUpdated: (html, editKey) => handleHtmlUpdated(screen.id, html, editKey),
-          onIframeMount: (el) => handleIframeMount(screen.id, el),
-          onContentHeight: (h) => handleContentHeight(screen.id, h),
-        },
-        style: {
-          background: "transparent", border: "none", padding: 0, width: CANVAS_W, height: screenH + LABEL_H,
-          // During streaming, let pointer events pass through to the canvas so pan/zoom works
-          pointerEvents: (screen.isStreaming ? "none" : undefined) as React.CSSProperties["pointerEvents"],
-        },
-        selected: false,
-        draggable: false,
-        connectable: false,
-      };
-    });
+      const next: ScreenNode[] = app.screens.map((screen, i) => {
+        const row = Math.floor(i / GRID_COLS);
+        const col = i % GRID_COLS;
+        const ch = contentHeights.get(screen.id);
+        const screenH = ch && ch > 0 ? ch : CANVAS_H;
+        const x = col * (CANVAS_W + CARD_GAP);
+        const y = rowY[row];
+        const isActive = screen.id === activeScreenId;
+        const isStreaming = screen.isStreaming ?? false;
+        const contentHeight = ch ?? 0;
 
-    // Show skeleton for next screen when generating and at least one screen exists already
-    const anyStreaming = app.screens.some((s) => s.isStreaming);
-    if (isGenerating && !anyStreaming && app.screens.length > 0) {
-      const i = app.screens.length;
-      const row = Math.floor(i / GRID_COLS);
-      const col = i % GRID_COLS;
-      result.push({
-        id: "__skeleton__",
-        type: "screen" as const,
-        position: {
-          x: col * (CANVAS_W + CARD_GAP),
-          y: rowY[row] ?? 0,
-        },
-        data: {
-          screenName: "", html: "", isStreaming: false, streamChunksRef: streamChunks, streamTick: 0,
-          isActive: false, isSkeleton: true, vpW: CANVAS_W, vpH: CANVAS_H, contentHeight: CANVAS_H, genStep,
-          onElementSelected: () => { }, onHtmlUpdated: () => { }, onIframeMount: () => { },
-          onContentHeight: () => { },
-        },
-        style: { background: "transparent", border: "none", padding: 0, width: CANVAS_W, height: CANVAS_H + LABEL_H, pointerEvents: "none" as const },
-        selected: false, draggable: false, connectable: false,
+        // Reuse the existing node (its reference, data, and live streamTick)
+        // when nothing app-derived changed — avoids re-rendering the iframe.
+        const existing = prevById.get(screen.id);
+        if (
+          existing &&
+          !existing.data.isSkeleton &&
+          existing.position.x === x &&
+          existing.position.y === y &&
+          existing.data.screenName === screen.name &&
+          existing.data.html === screen.html &&
+          existing.data.isStreaming === isStreaming &&
+          existing.data.isActive === isActive &&
+          existing.data.contentHeight === contentHeight
+        ) {
+          return existing;
+        }
+
+        return {
+          id: screen.id,
+          type: "screen" as const,
+          position: { x, y },
+          data: {
+            screenName: screen.name,
+            html: screen.html,
+            isStreaming,
+            streamChunksRef: streamChunks,
+            streamTick: existing?.data.streamTick ?? 0,
+            isActive,
+            isSkeleton: false,
+            vpW: CANVAS_W,
+            vpH: CANVAS_H,
+            contentHeight,
+            onElementSelected: (el) => handleElementSelected(screen.id, el),
+            onHtmlUpdated: (html, editKey) => handleHtmlUpdated(screen.id, html, editKey),
+            onIframeMount: (el) => handleIframeMount(screen.id, el),
+            onContentHeight: (h) => handleContentHeight(screen.id, h),
+            onCanvasWheel: applyWheel,
+          },
+          style: {
+            background: "transparent", border: "none", padding: 0, width: CANVAS_W, height: screenH,
+            // During streaming, let pointer events pass through to the canvas so pan/zoom works
+            pointerEvents: (isStreaming ? "none" : undefined) as React.CSSProperties["pointerEvents"],
+          },
+          draggable: false,
+          connectable: false,
+        };
       });
-    }
-    return result;
-  }, [app.screens, activeScreenId, streamChunks, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight, CANVAS_H, CANVAS_W]);
 
-  // Update specific streaming nodes when streamTick changes, without re-evaluating the whole nodes array
+      // Skeleton for the next screen while generating (once ≥1 screen exists).
+      const anyStreaming = app.screens.some((s) => s.isStreaming);
+      if (isGenerating && !anyStreaming && app.screens.length > 0) {
+        const i = app.screens.length;
+        const row = Math.floor(i / GRID_COLS);
+        const col = i % GRID_COLS;
+        const y = rowY[row] ?? 0;
+        const existing = prevById.get("__skeleton__");
+        if (existing && existing.data.genStep === genStep && existing.position.y === y) {
+          next.push(existing);
+        } else {
+          next.push({
+            id: "__skeleton__",
+            type: "screen" as const,
+            position: { x: col * (CANVAS_W + CARD_GAP), y },
+            data: {
+              screenName: "", html: "", isStreaming: false, streamChunksRef: streamChunks, streamTick: 0,
+              isActive: false, isSkeleton: true, vpW: CANVAS_W, vpH: CANVAS_H, contentHeight: CANVAS_H, genStep,
+              onElementSelected: () => { }, onHtmlUpdated: () => { }, onIframeMount: () => { },
+              onContentHeight: () => { }, onCanvasWheel: () => { },
+            },
+            style: { background: "transparent", border: "none", padding: 0, width: CANVAS_W, height: CANVAS_H + LABEL_H, pointerEvents: "none" as const },
+            draggable: false, connectable: false,
+          });
+        }
+      }
+
+      return next;
+    });
+  }, [app.screens, activeScreenId, streamChunks, isGenerating, genStep, contentHeights, handleElementSelected, handleHtmlUpdated, handleIframeMount, handleContentHeight, applyWheel, CANVAS_H, CANVAS_W, setNodes]);
+
+  // Bump only the streaming nodes when a new chunk arrives — flows through
+  // React Flow's own state (no prop clobber now that nodes are RF-owned).
   useEffect(() => {
     app.screens.forEach((screen) => {
       if (screen.isStreaming) {
@@ -774,11 +810,13 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
 
   return (
     <div
+      ref={wrapperRef}
       className="relative h-full w-full overflow-hidden"
     >
       <ReactFlow
         nodes={nodes}
-        edges={[]}
+        onNodesChange={onNodesChange}
+        edges={NO_EDGES}
         nodeTypes={nodeTypes}
         nodesDraggable={false}
         nodesConnectable={false}
@@ -801,10 +839,19 @@ function CanvasInner({ streamChunks, streamTick, onIframeRef, fitViewRef, applyW
         panOnScrollMode={PanOnScrollMode.Free}
         colorMode={colorMode}
         proOptions={{ hideAttribution: true }}
-        style={{ background: "#ededed" }}
+        style={{ background: "var(--canvas-bg)" }}
       >
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={28}
+          size={0.7}
+          color="var(--canvas-dot)"
+        />
         <Controls showInteractive={false} style={{ display: 'none' }} />
       </ReactFlow>
+
+      {/* Publishes zoom CSS vars + the data-canvas-zooming flag (smooth zoom) */}
+      <ViewportVars targetRef={wrapperRef} />
 
       {/* Bottom-center zoom / fit control bar */}
       {app.screens.length > 0 && (

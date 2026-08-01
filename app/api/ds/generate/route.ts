@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { generatePlan, generateScreenHtml } from "@/lib/agent";
+import { generateDesign } from "@/lib/agent";
 import { liveLlm } from "@/lib/llm";
 import {
   createDsProject,
@@ -9,14 +9,18 @@ import {
 } from "@/lib/db/ds-queries";
 
 /**
- * v2 generation endpoint (plan Phase B). SSE events:
+ * v2 generation endpoint (plan Phase B). Thin SSE adapter over the reasoning
+ * agent (lib/agent/generateDesign): it maps the agent's typed events to SSE
+ * frames and persists them. All generation logic lives in the agent.
+ *
+ * SSE events:
  *   project      { projectId }
  *   plan         { appName, screens[], source }
  *   theme        { theme }
  *   screen_start { index, name }
  *   screen_chunk { index, delta }      — raw stream for live preview only;
- *                                        the stored artifact is the
- *                                        sanitized html in screen_done
+ *                                        the stored artifact is the sanitized
+ *                                        html in screen_done
  *   screen_done  { index, screenId, name, html, source, warnings }
  *   done         { projectId }
  *   error        { message }
@@ -27,8 +31,6 @@ import {
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const SCREEN_CONCURRENCY = 3;
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -63,74 +65,76 @@ export async function POST(req: NextRequest) {
         }
       };
 
-      try {
-        const { plan, source } = await generatePlan(prompt, liveLlm);
+      let projectId: string | null = null;
 
-        const project = await createDsProject({
-          clerkUserId: userId ?? null,
-          name: plan.appName,
+      try {
+        await generateDesign({
           prompt,
-          theme: plan.theme,
+          llm: liveLlm,
+          abortSignal: req.signal,
+          onEvent: async (event) => {
+            switch (event.type) {
+              case "plan": {
+                const project = await createDsProject({
+                  clerkUserId: userId ?? null,
+                  name: event.appName,
+                  prompt,
+                  theme: event.theme,
+                });
+                projectId = project.id;
+                send("project", { projectId });
+                send("plan", {
+                  appName: event.appName,
+                  screens: event.screens,
+                  source: event.source,
+                });
+                send("theme", { theme: event.theme });
+                break;
+              }
+              case "screen_start":
+                send("screen_start", { index: event.index, name: event.screen.name });
+                break;
+              case "screen_chunk":
+                send("screen_chunk", { index: event.index, delta: event.delta });
+                break;
+              case "screen_done": {
+                if (!projectId) break; // unreachable: plan always fires first
+                const row = await insertDsScreen({
+                  projectId,
+                  name: event.screen.name,
+                  purpose: event.screen.purpose,
+                  html: event.html,
+                  source: event.source,
+                  sortOrder: event.index,
+                });
+                if (event.warnings.length > 0) {
+                  console.warn(`[generate] "${event.screen.name}":`, event.warnings);
+                }
+                send("screen_done", {
+                  index: event.index,
+                  screenId: row.id,
+                  name: event.screen.name,
+                  html: event.html,
+                  source: event.source,
+                  warnings: event.warnings,
+                });
+                break;
+              }
+            }
+          },
         });
 
-        send("project", { projectId: project.id });
-        send("plan", { appName: plan.appName, screens: plan.screens, source });
-        send("theme", { theme: plan.theme });
-
-        // Concurrency-3 worker pool over the screen list (plan §6).
-        let next = 0;
-        const runOne = async (): Promise<void> => {
-          while (next < plan.screens.length) {
-            const index = next++;
-            const screen = plan.screens[index];
-            send("screen_start", { index, name: screen.name });
-
-            const result = await generateScreenHtml({
-              ctx: {
-                appName: plan.appName,
-                userPrompt: prompt,
-                screens: plan.screens,
-                screen,
-              },
-              llm: liveLlm,
-              onChunk: (delta) => send("screen_chunk", { index, delta }),
-              abortSignal: req.signal,
-            });
-
-            const row = await insertDsScreen({
-              projectId: project.id,
-              name: screen.name,
-              purpose: screen.purpose,
-              html: result.html,
-              source: result.source,
-              sortOrder: index,
-            });
-
-            if (result.warnings.length > 0) {
-              console.warn(`[generate] "${screen.name}":`, result.warnings);
-            }
-            send("screen_done", {
-              index,
-              screenId: row.id,
-              name: screen.name,
-              html: result.html,
-              source: result.source,
-              warnings: result.warnings,
-            });
-          }
-        };
-
-        await Promise.all(
-          Array.from(
-            { length: Math.min(SCREEN_CONCURRENCY, plan.screens.length) },
-            () => runOne(),
-          ),
-        );
-
-        await setDsProjectStatus(project.id, "ready");
-        send("done", { projectId: project.id });
+        if (projectId) await setDsProjectStatus(projectId, "ready");
+        send("done", { projectId });
       } catch (err) {
         console.error("[generate] fatal:", err);
+        if (projectId) {
+          try {
+            await setDsProjectStatus(projectId, "error");
+          } catch {
+            // best-effort status update
+          }
+        }
         send("error", {
           message: err instanceof Error ? err.message : "generation failed",
         });
