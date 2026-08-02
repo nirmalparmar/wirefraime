@@ -787,7 +787,7 @@ export default function Dashboard() {
 
         {/* Recents */}
         {!loading && sortedApps.length > 0 && (
-          <section className="mx-auto max-w-6xl scroll-mt-6 px-6 pb-24" id="recents">
+          <section className="flex flex-col items-center justify-center w-full mx-auto scroll-mt-6 px-6 pb-24" id="recents">
             <div className="mb-6 flex items-center gap-3">
               <h2 className="text-xl font-semibold tracking-tight text-foreground">Recents</h2>
               <Badge variant="secondary" className="rounded-full">{sortedApps.length}</Badge>
