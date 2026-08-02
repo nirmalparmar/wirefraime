@@ -287,7 +287,6 @@ export default function Dashboard() {
   const router = useRouter();
   const [apps, setApps] = useState<WireframeApp[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mounted, setMounted] = useState(false);
 
   const [prompt, setPrompt] = useState("");
   const [wireframe, setWireframe] = useState(false);
@@ -333,7 +332,6 @@ export default function Dashboard() {
         console.warn("Failed to load projects:", e);
       } finally {
         setLoading(false);
-        requestAnimationFrame(() => setMounted(true));
       }
     }
     load();
@@ -606,10 +604,7 @@ export default function Dashboard() {
 
           {/* Hero prompt */}
           <section
-            className={cn(
-              "relative mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-3xl flex-col items-center justify-center px-6 py-16 text-center transition-all duration-500 ease-out md:min-h-[86vh]",
-              mounted ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
-            )}
+            className="relative mx-auto flex min-h-[calc(100vh-3.5rem)] max-w-3xl flex-col items-center justify-center px-6 py-16 text-center md:min-h-[86vh]"
           >
             {/* <Badge variant="secondary" className="mb-5 gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
               <Sparkles className="text-foreground/60" />
