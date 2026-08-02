@@ -787,7 +787,7 @@ export default function Dashboard() {
 
         {/* Recents */}
         {!loading && sortedApps.length > 0 && (
-          <section className="flex flex-col items-center justify-center w-full mx-auto scroll-mt-6 px-6 pb-24" id="recents">
+          <section className="mx-auto max-w-6xl scroll-mt-6 px-6 pb-24" id="recents">
             <div className="mb-6 flex items-center gap-3">
               <h2 className="text-xl font-semibold tracking-tight text-foreground">Recents</h2>
               <Badge variant="secondary" className="rounded-full">{sortedApps.length}</Badge>
@@ -800,7 +800,6 @@ export default function Dashboard() {
                   <Card
                     key={app.id}
                     className="wf-rise group relative gap-0 overflow-hidden rounded-xl py-0 ring-1 ring-black/[0.06] shadow-[var(--ws-soft)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[var(--ws-soft-lg)]"
-                    style={{ animationDelay: `${Math.min(i, 9) * 0.04}s` }}
                   >
                     <button
                       type="button"
