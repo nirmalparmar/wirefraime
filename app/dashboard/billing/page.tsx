@@ -18,6 +18,7 @@ type SubscriptionInfo = {
 
 const PLAN_DISPLAY: Record<string, { name: string; color: string }> = {
   free: { name: "Free", color: "text-muted-foreground" },
+  starter: { name: "Starter", color: "text-chart-4" },
   pro: { name: "Pro", color: "text-primary" },
   ultra: { name: "Ultra", color: "text-chart-2" },
 };

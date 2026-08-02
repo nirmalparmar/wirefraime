@@ -3,7 +3,7 @@
 import useSWR from "swr";
 import { useAuth } from "@clerk/nextjs";
 
-export type PlanId = "free" | "pro" | "ultra";
+export type PlanId = "free" | "starter" | "pro" | "ultra";
 export type SubscriptionStatus =
   | "inactive"
   | "active"
@@ -59,7 +59,7 @@ export function useSubscription() {
     screensUsed: data?.screensUsed ?? 0,
     screensRemaining: data?.screensRemaining ?? 0,
     isActive,
-    isPro: isActive && (planId === "pro" || planId === "ultra"),
+    isPro: isActive && planId !== "free",
     refresh: mutate,
   };
 }

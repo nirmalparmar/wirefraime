@@ -39,7 +39,7 @@ export function Pricing() {
 
   return (
     <section id="pricing" className="relative px-6 py-20 text-foreground md:px-10 md:py-28">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-12">
           <SectionHeading
             align="center"
@@ -49,7 +49,7 @@ export function Pricing() {
                 Simple, <Em>honest</Em> pricing
               </>
             }
-            lede="Two plans. Switch or cancel any time."
+            lede="Three plans. Switch or cancel any time."
           />
         </div>
 
@@ -79,7 +79,7 @@ export function Pricing() {
         </div>
 
         {/* Plan cards — one flush bordered strip, no gaps */}
-        <div className="grid overflow-hidden rounded-[20px] border border-border md:grid-cols-2">
+        <div className="grid overflow-hidden rounded-[20px] border border-border md:grid-cols-3">
           {PLANS.map((card, i) => {
             const isLoading = loadingPlan === card.slug;
             const price = annual ? annualPrice(card.priceMonthly) : card.priceMonthly;

@@ -369,6 +369,32 @@ body {
   animation: wfFillIn 4.4s ease infinite;
 }
 
+/* Design cursor: a single pointer glides across the blueprint, visiting each
+   region roughly as it's sketched (locked to wfDraw's 4.4s loop), then eases
+   back as the drawing fades — reads as "an agent is placing elements". Coords
+   are SVG user units; transform-box/origin pin them to the viewBox. */
+@keyframes wfCursorTour {
+  0%   { transform: translate(30px, 24px); }
+  14%  { transform: translate(120px, 78px); }
+  28%  { transform: translate(60px, 143px); }
+  42%  { transform: translate(272px, 104px); }
+  56%  { transform: translate(66px, 196px); }
+  70%  { transform: translate(163px, 196px); }
+  84%  { transform: translate(268px, 196px); }
+  100% { transform: translate(30px, 24px); }
+}
+
+.wf-cursor {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: wfCursorTour 4.4s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+  filter: drop-shadow(0 1px 1.5px rgb(20 20 20 / 0.28));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-cursor { animation: none; transform: translate(120px, 78px); }
+}
+
 /* Reasoning stream: fade the top edge so scrolled-off text dissolves */
 .wf-fade-top {
   mask-image: linear-gradient(to bottom, transparent 0, black 16px);

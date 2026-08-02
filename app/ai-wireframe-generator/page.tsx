@@ -37,7 +37,7 @@ export default function AiWireframeGeneratorPage() {
         { question: "Are the wireframes editable?", answer: "Yes. You can edit elements on the canvas and use chat-based refinement to change the copy, layout, components, and visual direction." },
         { question: "Does it create low-fidelity or high-fidelity wireframes?", answer: "Wirefraime creates high-fidelity interface screens with real components and content. The result is intended for product validation and handoff, not only boxes-and-arrows exploration." },
         { question: "Can I export the generated wireframes?", answer: "Yes. Paid plans include PNG export, HTML and Tailwind export, and full Next.js project export." },
-        { question: "How much does it cost?", answer: "Pro is $20 month-to-month or $12 per month when billed annually, with 150 screens per month. Ultra is $40 month-to-month or $24 per month when billed annually, with 350 screens per month." },
+        { question: "How much does it cost?", answer: "Starter is $5 month-to-month or $3 per month when billed annually, with 7 screens per month. Pro is $20 month-to-month or $12 per month when billed annually, with 40 screens per month. Ultra is $40 month-to-month or $24 per month when billed annually, with 100 screens per month." },
       ]}
       related={[{ href: "/ai-ui-generator", label: "AI UI generator" }]}
     />

@@ -24,10 +24,7 @@ const SITE_URL =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: {
-    default: "AI App Designer for Complete Product Flows | Wirefraime",
-    template: "%s — Wirefraime",
-  },
+  title: "Wirefraime — AI App Designer for Complete Product Flows",
   description:
     "Turn a product idea into a complete, editable UI flow. Wirefraime designs connected app screens, states, a reusable design system, and exportable code—and includes a dedicated landing-page builder.",
   applicationName: "Wirefraime",

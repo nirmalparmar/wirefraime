@@ -106,6 +106,17 @@ function GeneratingCard({ label, sublabel }: { label: string; sublabel?: string 
           <rect className="wf-fill-in" x="16" y="126" width="76" height="22" rx="11" style={d(1.0)} />
           <rect className="wf-fill-in" x="226" y="54" width="88" height="94" rx="8" style={d(1.12)} />
         </g>
+
+        {/* Design cursor — glides across the blueprint as it's sketched */}
+        <g className="wf-cursor">
+          <path
+            d="M0 0 L0 22 L6 16.5 L9.6 24 L12.6 22.7 L9 15.3 L16.5 15.3 Z"
+            fill="var(--ws-accent)"
+            stroke="#ffffff"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+        </g>
       </svg>
 
       {(label || sublabel) && (

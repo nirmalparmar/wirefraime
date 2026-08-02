@@ -8,7 +8,7 @@ import { requireDodo } from "@/lib/payments/client";
 import { getProductId } from "@/lib/payments/dodo";
 
 const Body = z.object({
-  plan: z.enum(["pro", "ultra"]),
+  plan: z.enum(["starter", "pro", "ultra"]),
   annual: z.boolean(),
 });
 

@@ -47,7 +47,7 @@ export const JSON_LD = {
 };
 
 export const NAV_LINKS = [
-  { label: "Landing builder", href: "/landing-page-builder" },
+  // { label: "Landing builder", href: "/landing-page-builder" },
   // { label: "Examples", href: "/#gallery" },
   { label: "How it works", href: "/#how-it-works" },
   { label: "Pricing", href: "/#pricing" },

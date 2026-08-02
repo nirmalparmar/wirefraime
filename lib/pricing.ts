@@ -1,6 +1,6 @@
 export const ANNUAL_DISCOUNT = 40;
 
-export type PlanSlug = "pro" | "ultra";
+export type PlanSlug = "starter" | "pro" | "ultra";
 
 export type Plan = {
   name: string;
@@ -14,13 +14,29 @@ export type Plan = {
 
 export const PLANS: Plan[] = [
   {
+    name: "Starter",
+    slug: "starter",
+    tagline: "Kick the tires and design your first few screens.",
+    priceMonthly: 5,
+    featured: false,
+    features: [
+      "7 screens / month",
+      "Full component library",
+      "HTML & Next.js export",
+      "PNG export per screen",
+      "Chat refinement",
+      "Design system generation",
+    ],
+    cta: "Start Starter",
+  },
+  {
     name: "Pro",
     slug: "pro",
     tagline: "Everything you need to ship your first product.",
     priceMonthly: 20,
     featured: false,
     features: [
-      "150 screens / month",
+      "40 screens / month",
       "Full component library",
       "HTML & Next.js export",
       "PNG export per screen",
@@ -36,7 +52,7 @@ export const PLANS: Plan[] = [
     priceMonthly: 40,
     featured: true,
     features: [
-      "350 screens / month",
+      "100 screens / month",
       "Full component library",
       "HTML & Next.js export",
       "PNG export per screen",

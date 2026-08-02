@@ -142,27 +142,139 @@ const STARTERS = [
   { icon: Rocket, label: "Landing page", prompt: "A modern landing page for an AI startup with a hero, features, pricing, and FAQ" },
 ];
 
-/* ── Neutral, layered project thumbnail (shared tokens only) ── */
-function ProjectPreview() {
+/* ── Skeleton bars — shown while the live preview loads, and as the
+   graceful fallback for projects with no rendered screen yet. ── */
+function PreviewSkeleton() {
+  return (
+    <div className="flex flex-col gap-2 p-3.5">
+      <div className="h-2 w-3/5 rounded bg-foreground/12" />
+      <div className="h-1.5 w-2/5 rounded bg-foreground/[0.07]" />
+      <div className="mt-1 flex gap-2">
+        <div className="h-11 flex-1 rounded-md bg-muted" />
+        <div className="h-11 flex-1 rounded-md bg-muted" />
+        <div className="h-11 flex-1 rounded-md bg-primary/[0.08] ring-1 ring-primary/15" />
+      </div>
+      <div className="h-2 w-full rounded bg-foreground/[0.07]" />
+      <div className="h-2 w-4/5 rounded bg-foreground/[0.07]" />
+    </div>
+  );
+}
+
+/* ── Live thumbnail: the project's first screen rendered in a scaled,
+   sandboxed iframe. Its HTML is fetched only once the card scrolls near
+   the viewport (so N projects don't fire N full-page fetches at once),
+   and it shows the skeleton until then — or forever, if it can't load. ── */
+function LivePreview({
+  projectId,
+  screenId,
+  platform,
+}: {
+  projectId: string;
+  screenId: string;
+  platform?: string;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [html, setHtml] = useState<string | null>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+
+  // Track the content-box size so we can compute the scale factor.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      setBox({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Fetch the first screen's HTML lazily, when the card nears the viewport.
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    let cancelled = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        fetch(`/api/projects/${projectId}/screens/${screenId}/html`)
+          .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+          .then((t) => {
+            if (!cancelled && t && t.trim()) setHtml(t);
+          })
+          .catch(() => {/* keep the skeleton */});
+      },
+      { rootMargin: "300px" }
+    );
+    io.observe(el);
+    return () => {
+      cancelled = true;
+      io.disconnect();
+    };
+  }, [projectId, screenId]);
+
+  // Screens are authored at their real design width; scale that down to the card.
+  const designW = platform === "mobile" ? 390 : platform === "tablet" ? 1024 : 1440;
+  const scale = box.w > 0 ? box.w / designW : 0;
+  const frameH = scale > 0 ? Math.ceil(box.h / scale) : 0;
+  const ready = html !== null && scale > 0;
+
+  return (
+    <div ref={boxRef} className="relative h-full w-full overflow-hidden bg-card">
+      {ready ? (
+        <iframe
+          srcDoc={html!}
+          sandbox="allow-scripts"
+          scrolling="no"
+          tabIndex={-1}
+          aria-hidden
+          title=""
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: designW,
+            height: frameH,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+            border: 0,
+            pointerEvents: "none",
+            background: "#fff",
+          }}
+        />
+      ) : (
+        <PreviewSkeleton />
+      )}
+    </div>
+  );
+}
+
+/* ── Project thumbnail — a lifted browser mock hosting the live preview ── */
+function ProjectPreview({
+  projectId,
+  screenId,
+  platform,
+}: {
+  projectId: string;
+  screenId?: string;
+  platform?: string;
+}) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-gradient-to-b from-muted/40 to-muted">
       {/* floating browser mock, lifted off the panel */}
-      <div className="absolute inset-x-6 top-6 bottom-0 overflow-hidden rounded-t-xl bg-card shadow-[0_12px_30px_-14px_rgba(0,0,0,0.28)] ring-1 ring-black/[0.05] transition-transform duration-300 ease-out group-hover:-translate-y-1">
-        <div className="flex h-6 items-center gap-1.5 border-b border-border/60 bg-muted/40 px-3">
+      <div className="absolute inset-x-6 top-6 bottom-0 flex flex-col overflow-hidden rounded-t-xl bg-card shadow-[0_12px_30px_-14px_rgba(0,0,0,0.28)] ring-1 ring-black/[0.05] transition-transform duration-300 ease-out group-hover:-translate-y-1">
+        {/* <div className="flex h-6 shrink-0 items-center gap-1.5 border-b border-border/60 bg-muted/40 px-3">
           <span className="size-1.5 rounded-full bg-foreground/15" />
           <span className="size-1.5 rounded-full bg-foreground/10" />
           <span className="size-1.5 rounded-full bg-foreground/10" />
-        </div>
-        <div className="flex flex-col gap-2 p-3.5">
-          <div className="h-2 w-3/5 rounded bg-foreground/12" />
-          <div className="h-1.5 w-2/5 rounded bg-foreground/[0.07]" />
-          <div className="mt-1 flex gap-2">
-            <div className="h-11 flex-1 rounded-md bg-muted" />
-            <div className="h-11 flex-1 rounded-md bg-muted" />
-            <div className="h-11 flex-1 rounded-md bg-primary/[0.08] ring-1 ring-primary/15" />
-          </div>
-          <div className="h-2 w-full rounded bg-foreground/[0.07]" />
-          <div className="h-2 w-4/5 rounded bg-foreground/[0.07]" />
+        </div> */}
+        <div className="relative min-h-0 flex-1">
+          {screenId ? (
+            <LivePreview projectId={projectId} screenId={screenId} platform={platform} />
+          ) : (
+            <PreviewSkeleton />
+          )}
         </div>
       </div>
     </div>
@@ -422,12 +534,12 @@ export default function Dashboard() {
           <SidebarContent>
             <SidebarGroup>
               <SidebarMenu>
-                <SidebarMenuItem>
+                {/* <SidebarMenuItem>
                   <SidebarMenuButton variant="outline" tooltip="New design" onClick={focusPrompt}>
                     <Plus />
                     <span>New design</span>
                   </SidebarMenuButton>
-                </SidebarMenuItem>
+                </SidebarMenuItem> */}
                 <SidebarMenuItem>
                   <SidebarMenuButton isActive tooltip="Home" onClick={focusPrompt}>
                     <Home />
@@ -446,7 +558,7 @@ export default function Dashboard() {
             </SidebarGroup>
 
             {/* Usage card — hidden in the collapsed icon rail */}
-            <SidebarGroup className="mt-auto group-data-[collapsible=icon]:hidden">
+            {/* <SidebarGroup className="mt-auto group-data-[collapsible=icon]:hidden">
               <Card className="gap-2 rounded-xl bg-sidebar-accent/50 p-3.5 shadow-none ring-0">
                 <div className="flex items-center gap-2 text-[13px] font-medium text-sidebar-foreground">
                   <Sparkles className="size-4 text-muted-foreground" />
@@ -456,7 +568,7 @@ export default function Dashboard() {
                   Describe an idea and generate a full, editable flow in seconds.
                 </p>
               </Card>
-            </SidebarGroup>
+            </SidebarGroup> */}
           </SidebarContent>
 
           <SidebarFooter>
@@ -499,10 +611,10 @@ export default function Dashboard() {
               mounted ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
             )}
           >
-            <Badge variant="secondary" className="mb-5 gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
+            {/* <Badge variant="secondary" className="mb-5 gap-1.5 rounded-full px-3 py-1 text-xs font-medium">
               <Sparkles className="text-foreground/60" />
               AI product designer
-            </Badge>
+            </Badge> */}
 
             <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
               What should we design?
@@ -701,7 +813,11 @@ export default function Dashboard() {
                       onClick={() => router.push(`/workspace/${app.id}`)}
                       aria-label={`Open ${app.name}`}
                     >
-                      <ProjectPreview />
+                      <ProjectPreview
+                        projectId={app.id}
+                        screenId={app.screens?.[0]?.id}
+                        platform={app.platform}
+                      />
                       {screenCount > 0 && (
                         <Badge
                           variant="secondary"

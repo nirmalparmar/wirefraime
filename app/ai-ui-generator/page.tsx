@@ -37,7 +37,7 @@ export default function AiUiGeneratorPage() {
         { question: "Do I need to know Figma or write code?", answer: "No. You can start with a plain-language brief and refine the result visually or through chat. Code export is available when a developer is ready to continue the work." },
         { question: "Will all generated screens use the same style?", answer: "Yes. Wirefraime creates a design system for the project and uses its components and tokens across the generated screens." },
         { question: "Can I export the UI as code?", answer: "Yes. Paid plans include HTML and Tailwind export as well as a full Next.js project export. PNG export is also included." },
-        { question: "Is there a free generation plan?", answer: "You can create an account and inspect the workspace for free. AI screen generation currently requires a paid plan, starting at $12 per month when billed annually." },
+        { question: "Is there a free generation plan?", answer: "You can create an account and inspect the workspace for free. AI screen generation currently requires a paid plan, starting at $3 per month when billed annually." },
       ]}
       related={[{ href: "/ai-wireframe-generator", label: "AI wireframe generator" }]}
     />

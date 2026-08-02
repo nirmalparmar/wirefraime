@@ -4,7 +4,10 @@ import { useState } from "react";
 import { PLANS, STARTING_PRICE, annualPrice } from "@/lib/pricing";
 import { Em, Eyebrow, SectionHeading } from "@/components/landing/sections/section-heading";
 
-const [PRO, ULTRA] = PLANS;
+const bySlug = (slug: string) => PLANS.find((p) => p.slug === slug) ?? PLANS[0];
+const STARTER = bySlug("starter");
+const PRO = bySlug("pro");
+const ULTRA = bySlug("ultra");
 
 const QUESTIONS: { q: string; a: string }[] = [
   {
@@ -33,7 +36,7 @@ const QUESTIONS: { q: string; a: string }[] = [
   },
   {
     q: "How much does Wirefraime cost?",
-    a: `Pro runs $${PRO.priceMonthly}/mo (or $${annualPrice(PRO.priceMonthly)}/mo billed annually) and includes ${PRO.features[0].toLowerCase()}. Ultra is $${ULTRA.priceMonthly}/mo (or $${annualPrice(ULTRA.priceMonthly)}/mo annually), with ${ULTRA.features[0].toLowerCase()}. Cancel whenever you want.`,
+    a: `Starter is $${STARTER.priceMonthly}/mo (or $${annualPrice(STARTER.priceMonthly)}/mo billed annually) with ${STARTER.features[0].toLowerCase()}. Pro runs $${PRO.priceMonthly}/mo (or $${annualPrice(PRO.priceMonthly)}/mo annually) and includes ${PRO.features[0].toLowerCase()}. Ultra is $${ULTRA.priceMonthly}/mo (or $${annualPrice(ULTRA.priceMonthly)}/mo annually), with ${ULTRA.features[0].toLowerCase()}. Cancel whenever you want.`,
   },
   {
     q: "Can I try it for free?",
